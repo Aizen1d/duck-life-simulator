@@ -1,0 +1,14 @@
+# Project place file
+/Duck.rbxlx
+
+# Roblox Studio lock files
+/*.rbxlx.lock
+/*.rbxl.lock
+
+sourcemap.json
+
+# Wally packages are generated from wally.toml and wally.lock
+/Packages
+
+# Temporary generated design outputs can be large; move approved images to tracked folders.
+/assets/design/generated/

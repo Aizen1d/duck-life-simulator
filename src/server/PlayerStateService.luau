@@ -79,6 +79,7 @@ type PlayerState = {
 	pendingNotices: {{[string]: any}},
 	pendingComebackGift: boolean,
 	clientReady: boolean,
+	unlockLadder: boolean,
 }
 
 type SaveEntry = {
@@ -610,6 +611,40 @@ local function grantDailyQuestProgress(state: PlayerState, actionKind: string, a
 	end
 end
 
+local function hasQuestActivity(state: PlayerState, questId: string): boolean
+	local quest = state.quests[questId]
+
+	return quest ~= nil and (quest.level > 1 or quest.progress > 0)
+end
+
+-- Feature Unlock Ladder V0 (comprehension guardrail): fresh profiles reveal systems as their
+-- progress earns them, derived entirely from server-owned state that only ever increases, so
+-- nothing can re-lock. Profiles saved before the ladder shipped load with unlockLadder = false
+-- and keep every feature they already had.
+local function getFeatureUnlocks(state: PlayerState): {[string]: boolean}
+	if not state.unlockLadder then
+		return {
+			upgrades = true,
+			quests = true,
+			shop = true,
+			minigames = true,
+			visit = true,
+		}
+	end
+
+	local hasSold = hasQuestActivity(state, QUEST_SELL_EGGS_ID)
+	local hasSecondDuck = getDuckCount(state) >= 2
+	local hasHelped = hasQuestActivity(state, QUEST_HELP_DUCKS_ID)
+
+	return {
+		upgrades = hasSold,
+		quests = hasSold,
+		shop = hasSecondDuck,
+		minigames = hasHelped,
+		visit = hasHelped,
+	}
+end
+
 local function getVisibleCareDuckCount(state: PlayerState): number
 	return math.min(getDuckCount(state), PrototypeConfig.duckCare.requestVisibleDuckCap)
 end
@@ -918,6 +953,7 @@ local function createPlayerState(): PlayerState
 		pendingNotices = {},
 		pendingComebackGift = false,
 		clientReady = false,
+		unlockLadder = true,
 	}
 
 	for _ = 1, PrototypeConfig.startingDucks do
@@ -988,6 +1024,7 @@ local function applySavedData(state: PlayerState, savedData: {[string]: any})
 		progress = { 0, 0, 0 },
 		bonusGranted = false,
 	}
+	state.unlockLadder = savedData.unlockLadder == true
 	state.eggValueLevel = math.clamp(savedData.eggValueLevel, 0, EGG_VALUE_MAX_LEVEL)
 	state.eggSellValue = PrototypeConfig.eggSellValue + state.eggValueLevel * PrototypeConfig.firstUpgrade.valueIncrease
 	state.ducks = {}
@@ -1059,7 +1096,7 @@ local function serializeSaveData(state: PlayerState)
 	end
 
 	return {
-		schemaVersion = 9,
+		schemaVersion = 10,
 		coins = state.coins,
 		eggs = state.eggs,
 		duckFeed = getDuckFeedCount(state),
@@ -1076,6 +1113,7 @@ local function serializeSaveData(state: PlayerState)
 		lastSeenUtc = os.time(),
 		streakDay = state.streakDay,
 		dailyQuests = state.dailyQuests,
+		unlockLadder = state.unlockLadder,
 	}
 end
 
@@ -1346,6 +1384,9 @@ local function serializeStateForViewer(viewer: Player, homeState: PlayerState)
 
 	serializedState.isVisitingFarm = owner ~= nil
 	serializedState.visitorHelpEnabled = ownerState.visitorHelpEnabled
+	-- Unlock flags always reflect the viewer's own progress, never the visited owner's,
+	-- so a fresh owner's locked features can never strand or restrict a visitor.
+	serializedState.featureUnlocks = getFeatureUnlocks(homeState)
 	serializedState.farmOwnerUserId = farmOwner.UserId
 	serializedState.farmOwnerName = farmOwner.Name
 	serializedState.farmOwnerDisplayName = getPlayerDisplayName(farmOwner)
@@ -2222,7 +2263,10 @@ local function onAction(player: Player, actionName: any, payload: any?)
 	end
 
 	if actionName == RemoteProtocol.actions.visitFarm then
-		visitFarm(player, payload)
+		if getFeatureUnlocks(state).visit then
+			visitFarm(player, payload)
+		end
+
 		sendState(player, state)
 		return
 	elseif actionName == RemoteProtocol.actions.returnHomeFarm then
@@ -2248,6 +2292,21 @@ local function onAction(player: Player, actionName: any, payload: any?)
 	produceEggs(state)
 	updateWeather(state)
 	updateCareRequest(state)
+
+	-- Ladder-locked features reject their actions server-side; hidden buttons are not the trust boundary.
+	local featureUnlocks = getFeatureUnlocks(state)
+
+	if
+		(actionName == RemoteProtocol.actions.buyShopItem and not featureUnlocks.shop)
+		or (actionName == RemoteProtocol.actions.buyEggValueUpgrade and not featureUnlocks.upgrades)
+		or (
+			(actionName == RemoteProtocol.actions.startEggCatchRound or actionName == RemoteProtocol.actions.claimEggCatchReward)
+			and not featureUnlocks.minigames
+		)
+	then
+		sendState(player, state)
+		return
+	end
 
 	if actionName == RemoteProtocol.actions.collectEggs then
 		collectEggs(state)

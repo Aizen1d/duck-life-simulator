@@ -554,8 +554,8 @@ const nodes = [
 		file: "../../src/server/PlayerDataService.luau",
 		description: "DataStore wrapper and sanitizer for saved player data.",
 		responsibilities: [
-			"Uses `DuckPlayerDataV1` and schema version 9.",
-			"Sanitizes saved currencies, ducks, quest progress, daily quest slots, inventory, upgrade level, daily claim day, streak day, and the last-seen timestamp (clamped against forged future values).",
+			"Uses `DuckPlayerDataV1` and schema version 10.",
+			"Sanitizes saved currencies, ducks, quest progress, daily quest slots, inventory, upgrade level, daily claim day, streak day, the unlock ladder flag, and the last-seen timestamp (clamped against forged future values).",
 			"Loads with `GetAsync` and saves with `UpdateAsync`.",
 		],
 	},
@@ -704,8 +704,8 @@ const nodes = [
 		],
 	},
 	{
-		id: "save-data-v9",
-		label: "SavedPlayerData v9",
+		id: "save-data-v10",
+		label: "SavedPlayerData v10",
 		kind: "saved schema",
 		layer: "runtime",
 		badge: "schema",
@@ -714,7 +714,7 @@ const nodes = [
 		file: "../../src/server/PlayerDataService.luau",
 		description: "Current saved player schema produced and sanitized by `PlayerDataService`.",
 		responsibilities: [
-			"Persists coins, eggs, inventory, ready eggs, Egg Value level, ducks, quest progress, daily quest slots, next duck id, last daily claim day, streak day, and the last-seen timestamp for offline progress.",
+			"Persists coins, eggs, inventory, ready eggs, Egg Value level, ducks, quest progress, daily quest slots, next duck id, last daily claim day, streak day, the unlock ladder flag, and the last-seen timestamp for offline progress.",
 		],
 	},
 	{
@@ -1193,9 +1193,9 @@ const edges = [
 	{ from: "player-state-service", to: "farm-state-payload", type: "data", label: "serializes view state" },
 	{ from: "farm-state-payload", to: "duck-state", type: "remote", label: "sent over state event" },
 	{ from: "farm-state-payload", to: "farm-screen", type: "data", label: "rendered by client UI" },
-	{ from: "player-state-service", to: "save-data-v9", type: "data", label: "creates save snapshots" },
-	{ from: "save-data-v9", to: "player-data-service", type: "data", label: "sanitized and persisted" },
-	{ from: "save-data-v9", to: "datastore-api", type: "data", label: "stored in DuckPlayerDataV1" },
+	{ from: "player-state-service", to: "save-data-v10", type: "data", label: "creates save snapshots" },
+	{ from: "save-data-v10", to: "player-data-service", type: "data", label: "sanitized and persisted" },
+	{ from: "save-data-v10", to: "datastore-api", type: "data", label: "stored in DuckPlayerDataV1" },
 
 	{ from: "docs-hub", to: "project-structure-doc", type: "documents", label: "contains" },
 	{ from: "docs-hub", to: "game-brief-doc", type: "documents", label: "contains" },

@@ -8,7 +8,7 @@ The goal is to keep the first persistence pass small, server-owned, validated, a
 
 Save Data V0 is implemented in `src/server/PlayerDataService.luau` and integrated through `src/server/PlayerStateService.luau`.
 
-The current playable prototype loads player data on join, autosaves dirty state about `3` seconds after meaningful changes, retries failed autosaves after a longer delay, saves on leave, attempts final saves on shutdown, and includes Studio-only tester controls guarded by `RunService:IsStudio()`. The visible farm-screen save status indicator has been removed; save verification should use Studio Output logs and rejoin checks. The current saved schema is `schemaVersion = 9` because Daily Quests V0 progress (day stamp, three slot progress values, and the all-complete bonus flag) now persists alongside the Daily Streak V1 `streakDay` position, the `lastSeenUtc` timestamp for Offline Progress V0, Toy inventory, `lastDailyClaimDay`, Duck Feed, Premium Feed, Treat, Pillow, and Quest V0/V1/V2 progress. On load, offline egg production is granted from `lastSeenUtc` at `50%` of the online rate, capped at `2` hours.
+The current playable prototype loads player data on join, autosaves dirty state about `3` seconds after meaningful changes, retries failed autosaves after a longer delay, saves on leave, attempts final saves on shutdown, and includes Studio-only tester controls guarded by `RunService:IsStudio()`. The visible farm-screen save status indicator has been removed; save verification should use Studio Output logs and rejoin checks. The current saved schema is `schemaVersion = 10` because the Feature Unlock Ladder flag (`unlockLadder`, `true` only for profiles created after the ladder shipped) now persists alongside Daily Quests V0 progress (day stamp, three slot progress values, and the all-complete bonus flag), the Daily Streak V1 `streakDay` position, the `lastSeenUtc` timestamp for Offline Progress V0, Toy inventory, `lastDailyClaimDay`, Duck Feed, Premium Feed, Treat, Pillow, and Quest V0/V1/V2 progress. On load, offline egg production is granted from `lastSeenUtc` at `50%` of the online rate, capped at `2` hours.
 
 ## Official Roblox References Checked
 
@@ -49,6 +49,7 @@ Save the smallest set of values that make the current prototype feel continuous 
 - `lastSeenUtc` (server-derived Unix timestamp written on save, used to grant capped offline egg production on load)
 - `streakDay` (Daily Streak V1 position `0` to `7`; `0` means no streak started yet)
 - `dailyQuests` (Daily Quests V0: UTC day stamp, three slot progress values, all-complete bonus flag; the day's quest selection derives from the day number and is never saved)
+- `unlockLadder` (`true` only for profiles created after the Feature Unlock Ladder shipped; older profiles load `false` and keep every feature; the unlock rungs themselves derive from quest progress and duck count and are never saved)
 
 Do not save these in V0:
 
@@ -87,7 +88,7 @@ Object:
 
 ```lua
 {
-	schemaVersion = 9,
+	schemaVersion = 10,
 	coins = 0,
 	eggs = 0,
 	duckFeed = 0,
@@ -140,6 +141,7 @@ Object:
 		progress = { 0, 0, 0 },
 		bonusGranted = false,
 	},
+	unlockLadder = true,
 }
 ```
 
@@ -203,6 +205,7 @@ Persistent values must stay server-owned:
 - `dailyQuests.dayStamp`: finite integer day-since-epoch, minimum `0`; any mismatch with the current UTC day resets the slots, so stale or forged stamps are harmless
 - `dailyQuests.progress`: three finite integers, minimum `0`
 - `dailyQuests.bonusGranted`: boolean
+- `unlockLadder`: boolean; anything except an explicit saved `true` loads as `false` so pre-ladder profiles keep all features
 - `availableEggs`: finite integer, minimum `0`
 - `eggValueLevel`: finite integer, minimum `0`, maximum `PrototypeConfig.firstUpgrade.maxLevel`
 - `nextDuckId`: finite integer, at least one greater than the highest saved duck id
@@ -232,7 +235,8 @@ Every saved object must include `schemaVersion`.
 
 For V0:
 
-- `schemaVersion = 9`
+- `schemaVersion = 10`
+- Existing `schemaVersion = 9` saves load with `unlockLadder = false`, keeping every feature unlocked for pre-ladder profiles.
 - Existing `schemaVersion = 8` saves load with empty Daily Quests V0 state, which fills in on the next daily-quest action.
 - Existing `schemaVersion = 7` saves load with default `streakDay` at `0`, so the first post-update daily claim starts the streak at day `1`.
 - Existing `schemaVersion = 6` saves load with default `lastSeenUtc` at `0`, granting no offline progress on the first rejoin after the update.
@@ -298,6 +302,7 @@ General rules for every bump: timestamps are server-derived (`os.time`) and neve
 - [x] Persist `lastSeenUtc` and grant capped offline egg production (`50%` rate, `2` hour cap, forged-timestamp clamping) in schema version `7`.
 - [x] Persist the Daily Streak V1 `streakDay` position with escalating rewards and the pause-not-reset rule in schema version `8`.
 - [x] Persist Daily Quests V0 day stamp, slot progress, and bonus flag in schema version `9`, with the day's quest selection derived from the UTC day number instead of saved.
+- [x] Persist the Feature Unlock Ladder `unlockLadder` flag in schema version `10`, with all unlock rungs derived from quest progress and duck count instead of saved.
 
 ## Approved V0 Decisions
 

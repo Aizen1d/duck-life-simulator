@@ -79,6 +79,7 @@ export type FarmState = {
 	canBuyToy: boolean,
 	canClaimDailyCheckIn: boolean,
 	streakDay: number,
+	featureUnlocks: {[string]: boolean},
 	canCareForDucks: boolean,
 	renameError: string,
 	renameErrorDuckIndex: number,

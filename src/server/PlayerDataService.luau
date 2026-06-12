@@ -42,12 +42,13 @@ export type SavedPlayerData = {
 	lastSeenUtc: number,
 	streakDay: number,
 	dailyQuests: SavedDailyQuests,
+	unlockLadder: boolean,
 }
 
 local PlayerDataService = {}
 
 local STORE_NAME = "DuckPlayerDataV1"
-local SCHEMA_VERSION = 9
+local SCHEMA_VERSION = 10
 
 local playerStore = DataStoreService:GetDataStore(STORE_NAME)
 
@@ -275,6 +276,8 @@ function PlayerDataService.sanitize(rawData: any): SavedPlayerData?
 		lastSeenUtc = readInteger(rawTable.lastSeenUtc, 0, 0, os.time()),
 		streakDay = readInteger(rawTable.streakDay, 0, 0, 7),
 		dailyQuests = sanitizeDailyQuests(rawTable.dailyQuests),
+		-- Profiles saved before the Feature Unlock Ladder shipped stay fully unlocked.
+		unlockLadder = rawTable.unlockLadder == true,
 	}
 end
 

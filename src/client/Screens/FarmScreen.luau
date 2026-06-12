@@ -2623,6 +2623,14 @@ local function createDefaultFarmState()
 		canBuyPillow = false,
 		canBuyToy = false,
 		canClaimDailyCheckIn = false,
+		streakDay = 0,
+		featureUnlocks = {
+			upgrades = false,
+			quests = false,
+			shop = false,
+			minigames = false,
+			visit = false,
+		},
 		canCareForDucks = true,
 		renameError = "",
 		renameErrorDuckIndex = 0,
@@ -6003,11 +6011,13 @@ local function FarmScreen()
 	if screenMode == SCREEN_MODE_FARM then
 		children.WeatherOverlay = createWeatherOverlay(farmState, animationTime)
 		children.WeatherBadge = createWeatherBadge(farmState, layout)
-		children.QuestPanel = createQuestPanel(farmState, layout, questPanelExpanded, function()
-			setQuestPanelExpanded(function(current)
-				return not current
+		children.QuestPanel = if farmState.featureUnlocks.quests
+			then createQuestPanel(farmState, layout, questPanelExpanded, function()
+				setQuestPanelExpanded(function(current)
+					return not current
+				end)
 			end)
-		end)
+			else nil
 		children.WelcomeBackCard = if not farmState.isFreshProfile and not isViewingOtherFarm
 			then createWelcomeBackCard(welcomeBack, layout, function()
 				setWelcomeBack(nil)
@@ -6118,7 +6128,7 @@ local function FarmScreen()
 			)
 			else UDim2.new(1, -layout.sideMargin, 1, -(layout.actionBottom + layout.actionButtonHeight + 10))
 
-		children.MinigamesButton = e("TextButton", {
+		children.MinigamesButton = if not farmState.featureUnlocks.minigames then nil else e("TextButton", {
 			AnchorPoint = Vector2.new(0.5, 0),
 			AutoButtonColor = canOpenMinigames,
 			BackgroundColor3 = Color3.fromRGB(43, 52, 49),
@@ -6154,7 +6164,7 @@ local function FarmScreen()
 			}),
 		})
 
-		children.FarmVisitPanel = createFarmVisitPanel(farmState, layout, visitPanelOpen, canUseFarmVisit, function()
+		children.FarmVisitPanel = if not (farmState.featureUnlocks.visit or farmState.isVisitingFarm) then nil else createFarmVisitPanel(farmState, layout, visitPanelOpen, canUseFarmVisit, function()
 			setVisitPanelOpen(function(current)
 				return not current
 			end)
@@ -6162,7 +6172,7 @@ local function FarmScreen()
 			actionEvent:FireServer(RemoteProtocol.actions.toggleVisitorHelp)
 		end)
 
-		children.UpgradesButton = e("TextButton", {
+		children.UpgradesButton = if not farmState.featureUnlocks.upgrades then nil else e("TextButton", {
 			AnchorPoint = Vector2.new(1, 1),
 			AutoButtonColor = not tutorialVisible and not isViewingOtherFarm,
 			BackgroundColor3 = Color3.fromRGB(43, 52, 49),
@@ -6223,7 +6233,7 @@ local function FarmScreen()
 					advanceTutorial("sell")
 				end,
 			}),
-			Shop = e(ActionButton, {
+			Shop = if not farmState.featureUnlocks.shop then nil else e(ActionButton, {
 				label = "Shop",
 				subtitle = string.format("Feed x%d", farmState.duckFeed),
 				disabled = not canOpenShop,

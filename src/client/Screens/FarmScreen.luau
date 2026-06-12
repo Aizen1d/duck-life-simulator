@@ -1324,6 +1324,129 @@ local function createQuestPanel(farmState: FarmState, layout: LayoutMetrics, isE
 	}, children)
 end
 
+type WelcomeBackData = {[string]: number}
+
+-- Join-time rewards (offline eggs, streak claim, comeback gift) aggregate into one calm
+-- card that waits for a tap, instead of three floating toasts racing past a loading player.
+local function createWelcomeBackCard(welcomeBack: WelcomeBackData?, layout: LayoutMetrics, onDismiss: () -> ())
+	if not welcomeBack then
+		return nil
+	end
+
+	local lines = {}
+
+	if (welcomeBack.offlineEggs or 0) > 0 then
+		local offlineEggs = welcomeBack.offlineEggs or 0
+		table.insert(lines, string.format(
+			"Your ducks laid %d egg%s while you were away (%dm)",
+			offlineEggs,
+			if offlineEggs == 1 then "" else "s",
+			math.max(1, welcomeBack.offlineMinutes or 1)
+		))
+	end
+
+	if (welcomeBack.streakDay or 0) > 0 then
+		local streakLine = string.format("Day %d streak! +%d coins", welcomeBack.streakDay or 0, welcomeBack.streakCoins or 0)
+
+		if (welcomeBack.streakTreat or 0) > 0 then
+			streakLine ..= string.format(" + Treat x%d", welcomeBack.streakTreat or 0)
+		end
+
+		table.insert(lines, streakLine)
+	end
+
+	if (welcomeBack.giftFeed or 0) > 0 or (welcomeBack.giftTreat or 0) > 0 then
+		local giftParts = {}
+
+		if (welcomeBack.giftFeed or 0) > 0 then
+			table.insert(giftParts, string.format("Feed x%d", welcomeBack.giftFeed or 0))
+		end
+
+		if (welcomeBack.giftTreat or 0) > 0 then
+			table.insert(giftParts, string.format("Treat x%d", welcomeBack.giftTreat or 0))
+		end
+
+		table.insert(lines, string.format("The ducks missed you! Gift: %s", table.concat(giftParts, " + ")))
+	end
+
+	if #lines <= 0 then
+		return nil
+	end
+
+	local width = if layout.isCompact then 252 else 308
+	local lineHeight = if layout.isCompact then 15 else 17
+	local titleHeight = if layout.isCompact then 30 else 36
+	local buttonHeight = if layout.isCompact then 30 else 34
+	local height = titleHeight + #lines * lineHeight + buttonHeight + 22
+	local lineChildren = {}
+
+	for index, lineText in lines do
+		lineChildren["Line" .. tostring(index)] = e("TextLabel", {
+			BackgroundTransparency = 1,
+			Font = Enum.Font.GothamSemibold,
+			Position = UDim2.fromOffset(14, titleHeight + (index - 1) * lineHeight),
+			Size = UDim2.new(1, -28, 0, lineHeight),
+			Text = lineText,
+			TextColor3 = Theme.colors.text,
+			TextSize = if layout.isCompact then 10 else 11,
+			TextTruncate = Enum.TextTruncate.AtEnd,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			ZIndex = Theme.zIndex.ui + 31,
+		})
+	end
+
+	return e("Frame", {
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		BackgroundColor3 = Theme.colors.panel,
+		BorderSizePixel = 0,
+		Position = UDim2.fromScale(0.5, 0.42),
+		Size = UDim2.fromOffset(width, height),
+		ZIndex = Theme.zIndex.ui + 30,
+	}, {
+		Corner = e("UICorner", {
+			CornerRadius = Theme.corner,
+		}),
+		Stroke = e("UIStroke", {
+			Color = Color3.fromRGB(231, 224, 207),
+			Thickness = 1,
+		}),
+		Title = e("TextLabel", {
+			BackgroundTransparency = 1,
+			Font = Enum.Font.GothamBold,
+			Position = UDim2.fromOffset(14, 8),
+			Size = UDim2.new(1, -28, 0, titleHeight - 12),
+			Text = "Welcome back!",
+			TextColor3 = Theme.colors.text,
+			TextSize = if layout.isCompact then 13 else 15,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			ZIndex = Theme.zIndex.ui + 31,
+		}),
+		Lines = e("Frame", {
+			BackgroundTransparency = 1,
+			Size = UDim2.fromScale(1, 1),
+			ZIndex = Theme.zIndex.ui + 31,
+		}, lineChildren),
+		CollectButton = e("TextButton", {
+			AnchorPoint = Vector2.new(0.5, 1),
+			AutoButtonColor = true,
+			BackgroundColor3 = Theme.colors.coral,
+			BorderSizePixel = 0,
+			Font = Enum.Font.GothamBold,
+			Position = UDim2.new(0.5, 0, 1, -10),
+			Size = UDim2.fromOffset(if layout.isCompact then 110 else 130, buttonHeight),
+			Text = "Collect!",
+			TextColor3 = Theme.colors.panel,
+			TextSize = if layout.isCompact then 12 else 14,
+			ZIndex = Theme.zIndex.ui + 31,
+			[React.Event.Activated] = onDismiss,
+		}, {
+			Corner = e("UICorner", {
+				CornerRadius = Theme.corner,
+			}),
+		}),
+	})
+end
+
 local function createShopBackground()
 	return {
 		ShopWall = e("Frame", {
@@ -4956,6 +5079,8 @@ local function FarmScreen()
 	local testerExpanded, setTesterExpanded = React.useState(false)
 	local upgradesOpen, setUpgradesOpen = React.useState(false)
 	local questPanelExpanded, setQuestPanelExpanded = React.useState(false)
+	local welcomeBack, setWelcomeBack = React.useState(nil :: WelcomeBackData?)
+	local mountClockRef = React.useRef(os.clock())
 	local visitPanelOpen, setVisitPanelOpen = React.useState(false)
 	local tutorialVisible, setTutorialVisible = React.useState(false)
 	local tutorialStepIndex, setTutorialStepIndex = React.useState(1)
@@ -5438,6 +5563,26 @@ local function FarmScreen()
 	end, { isTutorialCareStepActive, screenMode, farmState.careRequestDuckIndex })
 
 	React.useEffect(function()
+		-- Join-time rewards arriving shortly after mount collect into the Welcome Back card;
+		-- the same notices later in the session fall back to floating toasts.
+		local welcomeWindowSeconds = 15
+
+		local function isWelcomeWindowOpen(): boolean
+			return os.clock() - (mountClockRef.current or 0) < welcomeWindowSeconds
+		end
+
+		local function mergeWelcomeBack(fields: {[string]: number})
+			setWelcomeBack(function(current: WelcomeBackData?)
+				local nextData: {[string]: number} = if current then table.clone(current) else {}
+
+				for key, value in fields do
+					nextData[key] = value
+				end
+
+				return nextData
+			end)
+		end
+
 		local connection = noticeEvent.OnClientEvent:Connect(function(noticePayload)
 			if typeof(noticePayload) ~= "table" then
 				return
@@ -5457,7 +5602,13 @@ local function FarmScreen()
 				local rewardTreat = if typeof(notice.rewardTreat) == "number" then notice.rewardTreat else 0
 				local streakDay = if typeof(notice.streakDay) == "number" then notice.streakDay else 0
 
-				if rewardCoins > 0 then
+				if rewardCoins > 0 and isWelcomeWindowOpen() then
+					mergeWelcomeBack({
+						streakDay = streakDay,
+						streakCoins = rewardCoins,
+						streakTreat = rewardTreat,
+					})
+				elseif rewardCoins > 0 then
 					local dailyText = if streakDay > 0
 						then string.format("Day %d streak! +%d coins", streakDay, rewardCoins)
 						else string.format("Daily +%d coins", rewardCoins)
@@ -5533,7 +5684,12 @@ local function FarmScreen()
 				local giftFeed = if typeof(notice.duckFeed) == "number" then notice.duckFeed else 0
 				local giftTreat = if typeof(notice.duckTreat) == "number" then notice.duckTreat else 0
 
-				if giftFeed > 0 or giftTreat > 0 then
+				if (giftFeed > 0 or giftTreat > 0) and isWelcomeWindowOpen() then
+					mergeWelcomeBack({
+						giftFeed = giftFeed,
+						giftTreat = giftTreat,
+					})
+				elseif giftFeed > 0 or giftTreat > 0 then
 					local giftParts = {}
 
 					if giftFeed > 0 then
@@ -5562,7 +5718,12 @@ local function FarmScreen()
 				local offlineEggs = if typeof(notice.eggs) == "number" then notice.eggs else 0
 				local awaySeconds = if typeof(notice.awaySeconds) == "number" then notice.awaySeconds else 0
 
-				if offlineEggs > 0 then
+				if offlineEggs > 0 and isWelcomeWindowOpen() then
+					mergeWelcomeBack({
+						offlineEggs = offlineEggs,
+						offlineMinutes = math.max(1, math.floor(awaySeconds / 60)),
+					})
+				elseif offlineEggs > 0 then
 					local awayMinutes = math.max(1, math.floor(awaySeconds / 60))
 					feedbackIdRef.current += 1
 					setFeedbackItems(function(items: {FeedbackItem})
@@ -5847,6 +6008,11 @@ local function FarmScreen()
 				return not current
 			end)
 		end)
+		children.WelcomeBackCard = if not farmState.isFreshProfile and not isViewingOtherFarm
+			then createWelcomeBackCard(welcomeBack, layout, function()
+				setWelcomeBack(nil)
+			end)
+			else nil
 		children.Ducks = createDuckGroup(
 			farmState.duckCount,
 			animationTime,

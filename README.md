@@ -67,6 +67,7 @@ wally install
 - [Game brief](docs/GAME_BRIEF.md)
 - [Roadmap](docs/ROADMAP.md)
 - [Product plan](docs/PRODUCT_PLAN.md)
+- [Owner backlog](docs/OWNER_BACKLOG.md)
 - [Tasks](docs/TASKS.md)
 - [Changelog](docs/CHANGELOG.md)
 

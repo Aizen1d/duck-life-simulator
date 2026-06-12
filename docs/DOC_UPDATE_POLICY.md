@@ -25,6 +25,7 @@ If any answer is yes, update the relevant docs in the same change.
 - `docs/ROADMAP.md`: phase changes, feature priorities, or major scope changes.
 - `docs/PRODUCT_PLAN.md`: monetization products, prices, or rules; analytics targets or instrumentation; marketing, store presence, or launch decisions; community policy; localization; trust/safety/compliance; operations and decision gates.
 - `docs/TASKS.md`: new follow-up work, completed tasks, known issues, testing gaps, or bugs that need regression coverage.
+- `docs/OWNER_BACKLOG.md`: anything blocked on the project owner (platform setup, asset generation, IDs, approvals, play-tests); check items off when provided and add new owner dependencies as they appear.
 - `docs/CHANGELOG.md`: meaningful additions, behavior changes, bug fixes, documentation milestones, and tooling changes.
 - `docs/PROJECT_STRUCTURE.md`: Rojo mappings, folder layout, new services, new top-level modules, or generated/local file rules.
 - `docs/project-map/script.js`: the interactive project map's node data when Rojo mappings, source modules, remotes, save schema version, or module relationships change. Keep its snapshot stats (module count, remote count, schema version) matching the real code.

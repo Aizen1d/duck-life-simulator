@@ -119,9 +119,12 @@ Current files:
 
 ### `docs/project-map`
 
-Static HTML/CSS/JS dashboard for visually analyzing the repository structure, Rojo mappings, module dependencies, runtime remotes, server-owned state, save-data flow, UI screens, high-level gameplay loop, supporting gameplay systems, roadmap direction, and key docs.
+Static HTML/CSS/JS dashboards for visually analyzing the repository and gameplay plan.
 
-Open `docs/project-map/index.html` directly in a browser. It has no package install or build step and is not mapped into Roblox by Rojo.
+- `docs/project-map/index.html`: interactive project map for Rojo mappings, module dependencies, runtime remotes, server-owned state, save-data flow, UI screens, high-level gameplay loop, supporting gameplay systems, roadmap direction, and key docs.
+- `docs/project-map/gameplay-flow.html`: autoplay box-component gameplay simulator for the current confirmed farm loop, including eggs, selling, care, shop items, quests, duck XP, weather, and save-state flow.
+
+Open either file directly in a browser. These pages have no package install or build step and are not mapped into Roblox by Rojo.
 
 ## Runtime Remotes
 

@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1">
+		<title>Duck Gameplay Simulator</title>
+		<link rel="stylesheet" href="gameplay-flow.css">
+	</head>
+	<body>
+		<header class="sim-header">
+			<div>
+				<p class="eyebrow">Duck gameplay simulation</p>
+				<h1>Autoplay Gameplay Flow</h1>
+			</div>
+			<nav class="header-links" aria-label="Related pages">
+				<a href="index.html">Project Map</a>
+				<a href="../GAME_BRIEF.md">Game Brief</a>
+				<a href="../ROADMAP.md">Roadmap</a>
+				<a href="../../README.md">README</a>
+			</nav>
+		</header>
+
+		<main class="sim-page">
+			<section class="control-panel" aria-label="Gameplay simulator controls">
+				<div class="run-state">
+					<p class="eyebrow">Current simulated player action</p>
+					<h2 id="actionTitle">Starting farm</h2>
+					<p id="actionDetail">The simulator is about to run the current confirmed duck farm loop.</p>
+				</div>
+				<div class="button-row">
+					<button id="playPauseButton" type="button">Pause</button>
+					<button id="stepButton" type="button">Step</button>
+					<button id="resetButton" type="button">Reset</button>
+				</div>
+				<div class="speed-control">
+					<label for="speedInput">Speed</label>
+					<input id="speedInput" type="range" min="1" max="4" step="1" value="1">
+					<span id="speedLabel">1x</span>
+				</div>
+				<p class="sim-note">
+					This is a visual simulator for analysis. It follows current confirmed systems and starter values, but it is not Roblox runtime code or a balance test.
+				</p>
+			</section>
+
+			<section class="scoreboard" aria-label="Simulated player state">
+				<div class="score-card">
+					<span>Ducks</span>
+					<strong data-value="ducks">1</strong>
+				</div>
+				<div class="score-card">
+					<span>Nest Eggs</span>
+					<strong data-value="availableEggs">0</strong>
+				</div>
+				<div class="score-card">
+					<span>Held Eggs</span>
+					<strong data-value="heldEggs">0</strong>
+				</div>
+				<div class="score-card">
+					<span>Coins</span>
+					<strong data-value="coins">0</strong>
+				</div>
+				<div class="score-card">
+					<span>Egg Value</span>
+					<strong data-value="eggValue">1</strong>
+				</div>
+				<div class="score-card">
+					<span>Duck Level</span>
+					<strong data-value="duckLevel">1</strong>
+				</div>
+			</section>
+
+			<section class="sim-shell" aria-label="Left-to-right gameplay simulation">
+				<div class="flow-hint">
+					<span>Left to right gameplay flow</span>
+					<span>Boxes light up as the simulated player acts</span>
+				</div>
+				<div class="sim-board" id="simBoard">
+					<section class="flow-column farm-column" aria-label="Farm scene">
+						<header>
+							<span class="column-kicker">Scene</span>
+							<h2>Farm Scene</h2>
+						</header>
+						<article id="ducksBox" class="component-card">
+							<h3>Duck Flock</h3>
+							<p><strong data-value="ducksInline">1</strong> ducks produce eggs over time.</p>
+							<div class="duck-row" id="duckRow"></div>
+						</article>
+						<article id="nestBox" class="component-card">
+							<h3>Nest</h3>
+							<p><strong data-value="availableEggsInline">0</strong> ready eggs wait here.</p>
+							<div class="progress-track">
+								<div id="eggProgressBar" class="progress-fill egg-fill"></div>
+							</div>
+						</article>
+						<article id="weatherBox" class="component-card">
+							<h3>Weather</h3>
+							<p id="weatherText">Sunny: normal care rhythm.</p>
+						</article>
+						<article id="careRequestBox" class="component-card">
+							<h3>Duck Need</h3>
+							<p id="careRequestText">No current request.</p>
+						</article>
+					</section>
+
+					<section class="flow-column action-column" aria-label="Player actions">
+						<header>
+							<span class="column-kicker">Player</span>
+							<h2>UI Actions</h2>
+						</header>
+						<article id="guideBox" class="component-card">
+							<h3>Guide Focus</h3>
+							<p id="guideText">Learn Collect, Sell, Shop, Buy Duck, and care.</p>
+						</article>
+						<article id="collectBox" class="component-card action-card">
+							<h3>Collect</h3>
+							<p>Move ready eggs from the nest into held eggs.</p>
+						</article>
+						<article id="sellBox" class="component-card action-card">
+							<h3>Sell</h3>
+							<p>Convert held eggs into coins using Egg Value.</p>
+						</article>
+						<article id="careActionBox" class="component-card action-card">
+							<h3>Care</h3>
+							<p>Resolve the active duck need and grant duck XP.</p>
+						</article>
+						<article id="eggCatchBox" class="component-card action-card">
+							<h3>Egg Catch</h3>
+							<p>Optional side activity with server-backed rewards.</p>
+						</article>
+					</section>
+
+					<section class="flow-column inventory-column" aria-label="Inventory and currency">
+						<header>
+							<span class="column-kicker">State</span>
+							<h2>Wallet + Bag</h2>
+						</header>
+						<article id="heldEggsBox" class="component-card">
+							<h3>Held Eggs</h3>
+							<p><strong data-value="heldEggsInline">0</strong> eggs are ready to sell.</p>
+						</article>
+						<article id="coinsBox" class="component-card">
+							<h3>Coins</h3>
+							<p><strong data-value="coinsInline">0</strong> coins can buy growth.</p>
+						</article>
+						<article id="itemsBox" class="component-card">
+							<h3>Care Items</h3>
+							<ul class="mini-list">
+								<li>Duck Feed: <strong data-value="duckFeed">1</strong></li>
+								<li>Premium Feed: <strong data-value="premiumFeed">0</strong></li>
+								<li>Treat: <strong data-value="duckTreat">0</strong></li>
+								<li>Pillow: <strong data-value="pillow">0</strong></li>
+								<li>Toy: <strong data-value="toy">0</strong></li>
+							</ul>
+						</article>
+					</section>
+
+					<section class="flow-column growth-column" aria-label="Growth decisions">
+						<header>
+							<span class="column-kicker">Choices</span>
+							<h2>Growth Decisions</h2>
+						</header>
+						<article id="eggValueBox" class="component-card">
+							<h3>Egg Value</h3>
+							<p>Level <strong data-value="eggValueLevel">0</strong> / 5</p>
+							<p>Next cost: <strong data-value="eggValueCost">10</strong> coins</p>
+						</article>
+						<article id="buyDuckBox" class="component-card">
+							<h3>Buy Duck</h3>
+							<p>Next cost: <strong data-value="duckCost">25</strong> coins</p>
+						</article>
+						<article id="shopBox" class="component-card">
+							<h3>Shop</h3>
+							<p>Spend coins on feed, treats, pillows, and toys.</p>
+						</article>
+					</section>
+
+					<section class="flow-column goals-column" aria-label="Duck growth and goals">
+						<header>
+							<span class="column-kicker">Progress</span>
+							<h2>Duck + Goals</h2>
+						</header>
+						<article id="profileBox" class="component-card">
+							<h3>Duck Profile</h3>
+							<p>Level <strong data-value="duckLevelInline">1</strong>, XP <strong data-value="duckXp">0</strong> / 100</p>
+							<div class="progress-track">
+								<div id="xpProgressBar" class="progress-fill xp-fill"></div>
+							</div>
+						</article>
+						<article id="questsBox" class="component-card">
+							<h3>Quests</h3>
+							<ul class="mini-list">
+								<li>Collect: <strong data-value="collectQuest">0 / 10</strong></li>
+								<li>Sell: <strong data-value="sellQuest">0 / 10</strong></li>
+								<li>Help: <strong data-value="helpQuest">0 / 3</strong></li>
+							</ul>
+						</article>
+						<article id="saveBox" class="component-card">
+							<h3>Save Status</h3>
+							<p id="saveText">Saved</p>
+						</article>
+					</section>
+				</div>
+			</section>
+
+			<section class="event-log" aria-label="Simulation event log">
+				<header>
+					<h2>Recent Flow</h2>
+					<button id="clearLogButton" type="button">Clear</button>
+				</header>
+				<ol id="eventLog"></ol>
+			</section>
+		</main>
+
+		<script src="gameplay-flow.js"></script>
+	</body>
+</html>

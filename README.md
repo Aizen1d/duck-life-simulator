@@ -42,7 +42,7 @@ wally install
 - `src/shared`: Modules shared by client and server, including prototype config, asset IDs, shared types, and the remote protocol.
 - `Packages`: Generated Wally packages mapped into `ReplicatedStorage.Packages`.
 - `assets`: Design references, approved generated images, and UI assets.
-- `docs`: Project documentation, including the local [project map dashboard](docs/project-map/index.html).
+- `docs`: Project documentation, including the local [project map dashboard](docs/project-map/index.html) and [gameplay simulator](docs/project-map/gameplay-flow.html).
 - `AGENTS.md`: Instructions for AI coding agents.
 
 ## Documentation
@@ -51,6 +51,7 @@ wally install
 - [AI agent roles](docs/AI_AGENT_ROLES.md)
 - [Project structure](docs/PROJECT_STRUCTURE.md)
 - [Project map dashboard](docs/project-map/index.html)
+- [Gameplay simulator](docs/project-map/gameplay-flow.html)
 - [Development workflow](docs/WORKFLOW.md)
 - [Documentation update policy](docs/DOC_UPDATE_POLICY.md)
 - [Reference policy](docs/REFERENCE_POLICY.md)

@@ -18,6 +18,12 @@ export type SavedDuckData = {
 	xp: number,
 }
 
+export type SavedDailyQuests = {
+	dayStamp: number,
+	progress: {number},
+	bonusGranted: boolean,
+}
+
 export type SavedPlayerData = {
 	schemaVersion: number,
 	coins: number,
@@ -35,12 +41,13 @@ export type SavedPlayerData = {
 	lastDailyClaimDay: number,
 	lastSeenUtc: number,
 	streakDay: number,
+	dailyQuests: SavedDailyQuests,
 }
 
 local PlayerDataService = {}
 
 local STORE_NAME = "DuckPlayerDataV1"
-local SCHEMA_VERSION = 8
+local SCHEMA_VERSION = 9
 
 local playerStore = DataStoreService:GetDataStore(STORE_NAME)
 
@@ -144,6 +151,23 @@ local function sanitizeQuests(rawQuests: any): {[string]: SavedQuestData}
 	end
 
 	return quests
+end
+
+local function sanitizeDailyQuests(rawDailyQuests: any): SavedDailyQuests
+	local rawTable = if typeof(rawDailyQuests) == "table" then rawDailyQuests :: {[string]: any} else {}
+	local rawProgress = if typeof(rawTable.progress) == "table" then rawTable.progress :: {any} else {}
+	local progress = {}
+
+	for slotIndex = 1, PrototypeConfig.dailyQuests.questCount do
+		progress[slotIndex] = readInteger(rawProgress[slotIndex], 0, 0, 100000)
+	end
+
+	-- A stale or forged dayStamp is harmless: any mismatch with the current UTC day resets the slots.
+	return {
+		dayStamp = readInteger(rawTable.dayStamp, 0, 0, nil),
+		progress = progress,
+		bonusGranted = rawTable.bonusGranted == true,
+	}
 end
 
 local function getUniqueDuckName(rawName: any, duckId: number, usedNames: {[string]: boolean}): string
@@ -250,6 +274,7 @@ function PlayerDataService.sanitize(rawData: any): SavedPlayerData?
 		-- Forged or future-dated timestamps clamp to now so offline elapsed time can never go negative or inflate.
 		lastSeenUtc = readInteger(rawTable.lastSeenUtc, 0, 0, os.time()),
 		streakDay = readInteger(rawTable.streakDay, 0, 0, 7),
+		dailyQuests = sanitizeDailyQuests(rawTable.dailyQuests),
 	}
 end
 

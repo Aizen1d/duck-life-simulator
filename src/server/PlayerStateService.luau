@@ -26,6 +26,12 @@ type QuestState = {
 	progress: number,
 }
 
+type DailyQuestsState = {
+	dayStamp: number,
+	progress: {number},
+	bonusGranted: boolean,
+}
+
 type EggCatchSession = {
 	sessionId: number,
 	startedAt: number,
@@ -69,6 +75,8 @@ type PlayerState = {
 	streakDay: number,
 	pendingOfflineEggs: number,
 	pendingOfflineSeconds: number,
+	dailyQuests: DailyQuestsState,
+	pendingNotices: {{[string]: any}},
 }
 
 type SaveEntry = {
@@ -512,6 +520,94 @@ local function grantQuestProgress(state: PlayerState, questId: string, amount: n
 	end
 end
 
+-- Daily quest handlers run inside action paths that do not receive the Player, so completion
+-- notices queue on the state and flush with the next sendState call for that player.
+local function queueNotice(state: PlayerState, payload: {[string]: any})
+	table.insert(state.pendingNotices, payload)
+end
+
+-- The same three daily quests roll for every player each UTC day, derived from the day number,
+-- so the selection needs no save fields and resets itself on rollover.
+local function getDailyQuestDefinition(slotIndex: number, dayStamp: number): {[string]: any}
+	local dailyConfig = PrototypeConfig.dailyQuests
+	local poolIndex = (dayStamp + dailyConfig.slotOffsets[slotIndex]) % #dailyConfig.pool + 1
+
+	return dailyConfig.pool[poolIndex]
+end
+
+local function ensureDailyQuestsCurrent(state: PlayerState)
+	local currentDay = math.floor(os.time() / 86400)
+
+	if state.dailyQuests.dayStamp ~= currentDay then
+		state.dailyQuests = {
+			dayStamp = currentDay,
+			progress = { 0, 0, 0 },
+			bonusGranted = false,
+		}
+		markSaveDirty(state)
+	end
+end
+
+local function grantDailyQuestProgress(state: PlayerState, actionKind: string, amount: number)
+	if amount <= 0 then
+		return
+	end
+
+	ensureDailyQuestsCurrent(state)
+
+	local dailyConfig = PrototypeConfig.dailyQuests
+	local daily = state.dailyQuests
+	local completedCount = 0
+
+	for slotIndex = 1, dailyConfig.questCount do
+		local definition = getDailyQuestDefinition(slotIndex, daily.dayStamp)
+		local progress = daily.progress[slotIndex]
+
+		if definition.action == actionKind and progress < definition.target then
+			progress = math.min(definition.target, progress + amount)
+			daily.progress[slotIndex] = progress
+
+			if progress >= definition.target then
+				state.coins += definition.rewardCoins
+
+				if definition.rewardDuckFeedAmount > 0 then
+					local duckFeedId = PrototypeConfig.shop.duckFeed.id
+					state.inventory[duckFeedId] = (state.inventory[duckFeedId] or 0) + definition.rewardDuckFeedAmount
+				end
+
+				if definition.rewardDuckTreatAmount > 0 then
+					local duckTreatId = PrototypeConfig.shop.duckTreat.id
+					state.inventory[duckTreatId] = (state.inventory[duckTreatId] or 0) + definition.rewardDuckTreatAmount
+				end
+
+				queueNotice(state, {
+					kind = RemoteProtocol.notices.dailyQuestCompleted,
+					displayName = definition.displayName,
+					rewardCoins = definition.rewardCoins,
+					rewardDuckFeed = definition.rewardDuckFeedAmount,
+					rewardDuckTreat = definition.rewardDuckTreatAmount,
+				})
+			end
+
+			markSaveDirty(state)
+		end
+
+		if daily.progress[slotIndex] >= definition.target then
+			completedCount += 1
+		end
+	end
+
+	if completedCount >= dailyConfig.questCount and not daily.bonusGranted then
+		daily.bonusGranted = true
+		state.coins += dailyConfig.allCompleteBonusCoins
+		queueNotice(state, {
+			kind = RemoteProtocol.notices.dailyQuestBonus,
+			bonusCoins = dailyConfig.allCompleteBonusCoins,
+		})
+		markSaveDirty(state)
+	end
+end
+
 local function getVisibleCareDuckCount(state: PlayerState): number
 	return math.min(getDuckCount(state), PrototypeConfig.duckCare.requestVisibleDuckCap)
 end
@@ -812,6 +908,12 @@ local function createPlayerState(): PlayerState
 		streakDay = 0,
 		pendingOfflineEggs = 0,
 		pendingOfflineSeconds = 0,
+		dailyQuests = {
+			dayStamp = 0,
+			progress = { 0, 0, 0 },
+			bonusGranted = false,
+		},
+		pendingNotices = {},
 	}
 
 	for _ = 1, PrototypeConfig.startingDucks do
@@ -877,6 +979,11 @@ local function applySavedData(state: PlayerState, savedData: {[string]: any})
 	}
 	state.lastDailyClaimDay = savedData.lastDailyClaimDay or 0
 	state.streakDay = savedData.streakDay or 0
+	state.dailyQuests = savedData.dailyQuests or {
+		dayStamp = 0,
+		progress = { 0, 0, 0 },
+		bonusGranted = false,
+	}
 	state.eggValueLevel = math.clamp(savedData.eggValueLevel, 0, EGG_VALUE_MAX_LEVEL)
 	state.eggSellValue = PrototypeConfig.eggSellValue + state.eggValueLevel * PrototypeConfig.firstUpgrade.valueIncrease
 	state.ducks = {}
@@ -929,7 +1036,7 @@ local function serializeSaveData(state: PlayerState)
 	end
 
 	return {
-		schemaVersion = 8,
+		schemaVersion = 9,
 		coins = state.coins,
 		eggs = state.eggs,
 		duckFeed = getDuckFeedCount(state),
@@ -945,6 +1052,7 @@ local function serializeSaveData(state: PlayerState)
 		lastDailyClaimDay = state.lastDailyClaimDay,
 		lastSeenUtc = os.time(),
 		streakDay = state.streakDay,
+		dailyQuests = state.dailyQuests,
 	}
 end
 
@@ -984,6 +1092,42 @@ local function serializeQuests(state: PlayerState)
 	end
 
 	return quests
+end
+
+-- Daily quests reuse the existing quest panel: they serialize in the same shape as
+-- repeatable quests and sit at the top of the list, so no new UI surface is needed.
+local function serializeDailyQuests(state: PlayerState)
+	ensureDailyQuestsCurrent(state)
+
+	local entries = {}
+
+	for slotIndex = 1, PrototypeConfig.dailyQuests.questCount do
+		local definition = getDailyQuestDefinition(slotIndex, state.dailyQuests.dayStamp)
+
+		table.insert(entries, {
+			id = "daily_slot_" .. tostring(slotIndex),
+			displayName = definition.displayName,
+			level = 1,
+			progress = state.dailyQuests.progress[slotIndex],
+			target = definition.target,
+			rewardCoins = definition.rewardCoins,
+			rewardDuckFeed = definition.rewardDuckFeedAmount,
+			rewardDuckTreat = definition.rewardDuckTreatAmount,
+			rewardPillow = 0,
+		})
+	end
+
+	return entries
+end
+
+local function serializeAllQuests(state: PlayerState)
+	local entries = serializeDailyQuests(state)
+
+	for _, quest in serializeQuests(state) do
+		table.insert(entries, quest)
+	end
+
+	return entries
 end
 
 local function serializeFarmVisits(viewer: Player)
@@ -1144,7 +1288,7 @@ local function serializeState(state: PlayerState)
 		weatherDetail = currentWeatherDefinition.detailText,
 		secondsUntilWeatherChange = math.max(0, math.ceil(state.nextWeatherAt - now)),
 		isFreshProfile = state.isFreshProfile,
-		quests = serializeQuests(state),
+		quests = serializeAllQuests(state),
 	}
 end
 
@@ -1188,6 +1332,14 @@ local function serializeStateForViewer(viewer: Player, homeState: PlayerState)
 end
 
 local function sendState(player: Player, state: PlayerState)
+	if #state.pendingNotices > 0 then
+		for _, noticePayload in state.pendingNotices do
+			noticeEvent:FireClient(player, noticePayload)
+		end
+
+		table.clear(state.pendingNotices)
+	end
+
 	stateEvent:FireClient(player, serializeStateForViewer(player, state))
 end
 
@@ -1326,6 +1478,7 @@ local function collectEggs(state: PlayerState)
 	state.eggs += collectedEggs
 	state.availableEggs = 0
 	grantQuestProgress(state, QUEST_COLLECT_EGGS_ID, collectedEggs)
+	grantDailyQuestProgress(state, "collect", collectedEggs)
 	markSaveDirty(state)
 end
 
@@ -1339,6 +1492,7 @@ local function sellEggs(state: PlayerState)
 	state.coins += soldEggs * state.eggSellValue
 	state.eggs = 0
 	grantQuestProgress(state, QUEST_SELL_EGGS_ID, soldEggs)
+	grantDailyQuestProgress(state, "sell", soldEggs)
 	markSaveDirty(state)
 end
 
@@ -1353,6 +1507,7 @@ local function buyEggValueUpgrade(state: PlayerState)
 	state.eggValueLevel += 1
 	state.eggSellValue += PrototypeConfig.firstUpgrade.valueIncrease
 	grantQuestProgress(state, QUEST_SPEND_COINS_ID, upgradeCost)
+	grantDailyQuestProgress(state, "spend", upgradeCost)
 	markSaveDirty(state)
 end
 
@@ -1372,6 +1527,7 @@ local function buyDuck(state: PlayerState)
 
 	grantQuestProgress(state, QUEST_BUY_DUCKS_ID, duckPurchase.duckIncrease)
 	grantQuestProgress(state, QUEST_SPEND_COINS_ID, duckPurchaseCost)
+	grantDailyQuestProgress(state, "spend", duckPurchaseCost)
 	markSaveDirty(state)
 end
 
@@ -1414,6 +1570,8 @@ local function buyShopItem(state: PlayerState, payload: any)
 	state.coins -= itemDefinition.cost
 	state.inventory[itemDefinition.id] = (state.inventory[itemDefinition.id] or 0) + itemDefinition.purchaseAmount
 	grantQuestProgress(state, QUEST_SPEND_COINS_ID, itemDefinition.cost)
+	grantDailyQuestProgress(state, "buy_item", 1)
+	grantDailyQuestProgress(state, "spend", itemDefinition.cost)
 	markSaveDirty(state)
 end
 
@@ -1434,8 +1592,10 @@ local function useTreatOnDuck(state: PlayerState, payload: any)
 	state.inventory[duckTreat.id] = duckTreatCount - 1
 	local levelsGained = addDuckXp(duck, xpAmount)
 	grantQuestProgress(state, QUEST_USE_TREATS_ID, 1)
+	grantDailyQuestProgress(state, "treat", 1)
 	if levelsGained > 0 then
 		grantQuestProgress(state, QUEST_LEVEL_UP_DUCKS_ID, levelsGained)
+		grantDailyQuestProgress(state, "level", levelsGained)
 	end
 	markSaveDirty(state)
 end
@@ -1603,6 +1763,7 @@ local function claimEggCatchReward(player: Player, state: PlayerState, payload: 
 	end
 
 	grantQuestProgress(state, QUEST_WIN_EGG_CATCH_ID, 1)
+	grantDailyQuestProgress(state, "egg_catch", 1)
 	markSaveDirty(state)
 
 	sendNotice(player, {
@@ -1684,8 +1845,10 @@ local function careForDuck(state: PlayerState, payload: any)
 
 	local levelsGained = addDuckXp(duck, xpAmount)
 	grantQuestProgress(state, QUEST_HELP_DUCKS_ID, 1)
+	grantDailyQuestProgress(state, "help", 1)
 	if levelsGained > 0 then
 		grantQuestProgress(state, QUEST_LEVEL_UP_DUCKS_ID, levelsGained)
+		grantDailyQuestProgress(state, "level", levelsGained)
 	end
 	duck.hasCareRequest = false
 	duck.careRequestKind = ""

@@ -5458,6 +5458,55 @@ local function FarmScreen()
 						return nextItems
 					end)
 				end
+			elseif kind == RemoteProtocol.notices.dailyQuestCompleted then
+				local rewardCoins = if typeof(notice.rewardCoins) == "number" then notice.rewardCoins else 0
+				local displayName = if typeof(notice.displayName) == "string" then notice.displayName else "Daily goal"
+				local rewardDuckFeed = if typeof(notice.rewardDuckFeed) == "number" then notice.rewardDuckFeed else 0
+				local rewardDuckTreat = if typeof(notice.rewardDuckTreat) == "number" then notice.rewardDuckTreat else 0
+
+				if rewardCoins > 0 then
+					local dailyQuestText = string.format("%s done! +%d coins", displayName, rewardCoins)
+
+					if rewardDuckFeed > 0 then
+						dailyQuestText ..= string.format(" + Feed x%d", rewardDuckFeed)
+					end
+
+					if rewardDuckTreat > 0 then
+						dailyQuestText ..= string.format(" + Treat x%d", rewardDuckTreat)
+					end
+
+					feedbackIdRef.current += 1
+					setFeedbackItems(function(items: {FeedbackItem})
+						local nextItems = table.clone(items)
+						table.insert(nextItems, createFeedbackItem(
+							feedbackIdRef.current,
+							"daily_quest",
+							dailyQuestText,
+							Theme.colors.coin,
+							0.5,
+							0.21
+						))
+						return nextItems
+					end)
+				end
+			elseif kind == RemoteProtocol.notices.dailyQuestBonus then
+				local bonusCoins = if typeof(notice.bonusCoins) == "number" then notice.bonusCoins else 0
+
+				if bonusCoins > 0 then
+					feedbackIdRef.current += 1
+					setFeedbackItems(function(items: {FeedbackItem})
+						local nextItems = table.clone(items)
+						table.insert(nextItems, createFeedbackItem(
+							feedbackIdRef.current,
+							"daily_bonus",
+							string.format("All daily goals done! +%d bonus coins", bonusCoins),
+							Theme.colors.coral,
+							0.5,
+							0.24
+						))
+						return nextItems
+					end)
+				end
 			elseif kind == RemoteProtocol.notices.offlineProgress then
 				local offlineEggs = if typeof(notice.eggs) == "number" then notice.eggs else 0
 				local awaySeconds = if typeof(notice.awaySeconds) == "number" then notice.awaySeconds else 0

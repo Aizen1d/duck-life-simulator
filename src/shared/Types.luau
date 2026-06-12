@@ -271,6 +271,23 @@ export type OfflineProgressDefinition = {
 	capSeconds: number,
 }
 
+export type DailyQuestPoolEntry = {
+	id: string,
+	displayName: string,
+	action: string,
+	target: number,
+	rewardCoins: number,
+	rewardDuckFeedAmount: number,
+	rewardDuckTreatAmount: number,
+}
+
+export type DailyQuestsDefinition = {
+	questCount: number,
+	slotOffsets: {number},
+	allCompleteBonusCoins: number,
+	pool: {DailyQuestPoolEntry},
+}
+
 export type MinigameRewardDefinition = {
 	coinsPerScoreStep: number,
 	maxCoins: number,
@@ -319,6 +336,7 @@ export type PrototypeConfig = {
 	duckRename: DuckRenameDefinition,
 	dailyCheckIn: DailyCheckInDefinition,
 	offlineProgress: OfflineProgressDefinition,
+	dailyQuests: DailyQuestsDefinition,
 	minigames: MinigamesDefinition,
 }
 

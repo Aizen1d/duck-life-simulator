@@ -42,6 +42,8 @@ local RemoteProtocol = {
 		dailyCheckInClaimed = "daily_check_in_claimed",
 		dailyCheckInRejected = "daily_check_in_rejected",
 		offlineProgress = "offline_progress",
+		dailyQuestCompleted = "daily_quest_completed",
+		dailyQuestBonus = "daily_quest_bonus",
 	},
 }
 

@@ -501,6 +501,22 @@ local PrototypeConfig = {
 		capSeconds = 7200,
 	},
 
+	dailyQuests = {
+		questCount = 3,
+		slotOffsets = { 0, 3, 5 },
+		allCompleteBonusCoins = 30,
+		pool = {
+			{ id = "daily_collect", displayName = "Daily: Collect 30 eggs", action = "collect", target = 30, rewardCoins = 15, rewardDuckFeedAmount = 0, rewardDuckTreatAmount = 0 },
+			{ id = "daily_sell", displayName = "Daily: Sell 25 eggs", action = "sell", target = 25, rewardCoins = 15, rewardDuckFeedAmount = 0, rewardDuckTreatAmount = 0 },
+			{ id = "daily_help", displayName = "Daily: Help 5 ducks", action = "help", target = 5, rewardCoins = 15, rewardDuckFeedAmount = 1, rewardDuckTreatAmount = 0 },
+			{ id = "daily_buy_item", displayName = "Daily: Buy 2 shop items", action = "buy_item", target = 2, rewardCoins = 12, rewardDuckFeedAmount = 0, rewardDuckTreatAmount = 0 },
+			{ id = "daily_egg_catch", displayName = "Daily: Win Egg Catch once", action = "egg_catch", target = 1, rewardCoins = 15, rewardDuckFeedAmount = 1, rewardDuckTreatAmount = 0 },
+			{ id = "daily_treat", displayName = "Daily: Use a Treat", action = "treat", target = 1, rewardCoins = 12, rewardDuckFeedAmount = 0, rewardDuckTreatAmount = 0 },
+			{ id = "daily_spend", displayName = "Daily: Spend 60 coins", action = "spend", target = 60, rewardCoins = 15, rewardDuckFeedAmount = 0, rewardDuckTreatAmount = 0 },
+			{ id = "daily_level", displayName = "Daily: Level up a duck", action = "level", target = 1, rewardCoins = 18, rewardDuckFeedAmount = 0, rewardDuckTreatAmount = 1 },
+		},
+	},
+
 	minigames = {
 		eggCatch = {
 			id = "egg_catch",

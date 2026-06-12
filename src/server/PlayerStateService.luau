@@ -8,6 +8,7 @@ local TextService = game:GetService("TextService")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local PrototypeConfig = require(Shared:WaitForChild("PrototypeConfig"))
 local RemoteProtocol = require(Shared:WaitForChild("RemoteProtocol"))
+local PlayerDataService = require(script.Parent:WaitForChild("PlayerDataService"))
 
 type DuckState = {
 	id: number,
@@ -20,6 +21,17 @@ type DuckState = {
 	careRequestKind: string,
 }
 
+type QuestState = {
+	level: number,
+	progress: number,
+}
+
+type EggCatchSession = {
+	sessionId: number,
+	startedAt: number,
+	claimed: boolean,
+}
+
 type PlayerState = {
 	eggs: number,
 	coins: number,
@@ -27,29 +39,83 @@ type PlayerState = {
 	inventory: {[string]: number},
 	ducks: {DuckState},
 	nextDuckId: number,
+	quests: {[string]: QuestState},
 	eggSellValue: number,
 	eggValueLevel: number,
 	nextCareRequestAt: number,
 	nextEggAt: number,
+	eggProductionCarry: number,
+	eggCatchSession: EggCatchSession?,
+	nextEggCatchSessionId: number,
+	weatherId: string,
+	nextWeatherAt: number,
 	lastActionAt: {[string]: number},
 	renameError: string,
 	renameErrorDuckIndex: number,
+	isLoaded: boolean,
+	saveDirty: boolean,
+	saveInProgress: boolean,
+	saveRevision: number,
+	lastSaveAttemptAt: number,
+	nextAutosaveAt: number,
+	saveStatus: string,
+	saveStatusText: string,
+	isFreshProfile: boolean,
+	freshProfileNeedsHungryFollowUp: boolean,
+	freshProfileHungryHandled: boolean,
+	pendingForcedCareRequestKind: string,
+	visitorHelpEnabled: boolean,
+	lastDailyClaimDay: number,
+}
+
+type SaveEntry = {
+	userId: number,
+	playerName: string,
+	state: PlayerState,
 }
 
 local PlayerStateService = {}
 
 local ACTION_COOLDOWN_SECONDS = 0.15
-local EGG_VALUE_MAX_LEVEL = 1
+local AUTOSAVE_DELAY_SECONDS = 3
+local AUTOSAVE_RETRY_DELAY_SECONDS = 120
+local SAVE_WAIT_TIMEOUT_SECONDS = 10
+local EGG_VALUE_MAX_LEVEL = PrototypeConfig.firstUpgrade.maxLevel
 local UPDATE_INTERVAL_SECONDS = 1
 local TESTER_COIN_GRANT = 100
 local TESTER_READY_EGG_GRANT = 10
 local PET_REQUEST_KIND = PrototypeConfig.duckCare.requestKinds.pet.id
 local HUNGRY_REQUEST_KIND = PrototypeConfig.duckCare.requestKinds.hungry.id
+local SLEEPY_REQUEST_KIND = PrototypeConfig.duckCare.requestKinds.sleepy.id
+local DIRTY_REQUEST_KIND = PrototypeConfig.duckCare.requestKinds.clean.id
+local THIRSTY_REQUEST_KIND = PrototypeConfig.duckCare.requestKinds.thirsty.id
+local BORED_REQUEST_KIND = PrototypeConfig.duckCare.requestKinds.bored.id
+local WEATHER_SUNNY_ID = PrototypeConfig.weather.states.sunny.id
+local WEATHER_CLOUDY_ID = PrototypeConfig.weather.states.cloudy.id
+local WEATHER_RAINY_ID = PrototypeConfig.weather.states.rainy.id
+local WEATHER_STORMY_ID = PrototypeConfig.weather.states.stormy.id
+local QUEST_COLLECT_EGGS_ID = PrototypeConfig.quests.collectEggs.id
+local QUEST_SELL_EGGS_ID = PrototypeConfig.quests.sellEggs.id
+local QUEST_HELP_DUCKS_ID = PrototypeConfig.quests.helpDucks.id
+local QUEST_USE_TREATS_ID = PrototypeConfig.quests.useTreats.id
+local QUEST_BUY_DUCKS_ID = PrototypeConfig.quests.buyDucks.id
+local QUEST_SPEND_COINS_ID = PrototypeConfig.quests.spendCoins.id
+local QUEST_WIN_EGG_CATCH_ID = PrototypeConfig.quests.winEggCatch.id
+local QUEST_LEVEL_UP_DUCKS_ID = PrototypeConfig.quests.levelUpDucks.id
+local EGG_CATCH_CONFIG = PrototypeConfig.minigames.eggCatch
+local SAVE_STATUS_LOADING = "loading"
+local SAVE_STATUS_PENDING = "pending"
+local SAVE_STATUS_SAVING = "saving"
+local SAVE_STATUS_SAVED = "saved"
+local SAVE_STATUS_FAILED = "failed"
 
 local started = false
 local statesByPlayer: {[Player]: PlayerState} = {}
+local recentSaveEntriesByUserId: {[number]: SaveEntry} = {}
+local farmViewTargetsByPlayer: {[Player]: Player} = {}
 local actionEvent: RemoteEvent
 local stateEvent: RemoteEvent
+local noticeEvent: RemoteEvent
 
 local validActions: {[string]: boolean} = {}
 for _, actionName in RemoteProtocol.actions do
@@ -62,6 +128,11 @@ local testerActions = {
 	[RemoteProtocol.actions.testAddDuck] = true,
 	[RemoteProtocol.actions.testCareRequest] = true,
 	[RemoteProtocol.actions.testHungryRequest] = true,
+	[RemoteProtocol.actions.testSleepyRequest] = true,
+	[RemoteProtocol.actions.testDirtyRequest] = true,
+	[RemoteProtocol.actions.testThirstyRequest] = true,
+	[RemoteProtocol.actions.testBoredRequest] = true,
+	[RemoteProtocol.actions.testToggleWeather] = true,
 	[RemoteProtocol.actions.testReset] = true,
 }
 
@@ -93,8 +164,71 @@ local function getOrCreateRemoteEvent(folder: Folder, eventName: string): Remote
 	return event
 end
 
+local function getSaveStatusText(status: string): string
+	if status == SAVE_STATUS_LOADING then
+		return "Loading"
+	elseif status == SAVE_STATUS_PENDING then
+		return "Saving soon"
+	elseif status == SAVE_STATUS_SAVING then
+		return "Saving"
+	elseif status == SAVE_STATUS_FAILED then
+		return "Save delayed"
+	end
+
+	return "Saved"
+end
+
+local function setSaveStatus(state: PlayerState, status: string, customText: string?)
+	state.saveStatus = status
+	state.saveStatusText = customText or getSaveStatusText(status)
+end
+
+local function getStudioSaveFailureText(message: string?): string
+	if not RunService:IsStudio() then
+		return getSaveStatusText(SAVE_STATUS_FAILED)
+	end
+
+	if game.GameId == 0 or game.PlaceId == 0 then
+		return "Publish first"
+	end
+
+	local lowerMessage = string.lower(message or "")
+
+	if string.find(lowerMessage, "api") or string.find(lowerMessage, "studio access") then
+		return "Enable API services"
+	end
+
+	if string.find(lowerMessage, "403") or string.find(lowerMessage, "unauthorized") then
+		return "API blocked"
+	end
+
+	return getSaveStatusText(SAVE_STATUS_FAILED)
+end
+
+local function markSaveDirty(state: PlayerState)
+	state.saveRevision += 1
+
+	if not state.saveDirty or state.nextAutosaveAt <= 0 then
+		state.nextAutosaveAt = os.clock() + AUTOSAVE_DELAY_SECONDS
+	end
+
+	state.saveDirty = true
+
+	if state.saveStatus ~= SAVE_STATUS_LOADING and state.saveStatus ~= SAVE_STATUS_SAVING then
+		setSaveStatus(state, SAVE_STATUS_PENDING)
+	end
+end
+
 local function getDuckCount(state: PlayerState): number
 	return #state.ducks
+end
+
+local function getPlayerDisplayName(player: Player): string
+	if player.DisplayName ~= "" then
+		return player.DisplayName
+	end
+
+	return player.Name
 end
 
 local function normalizeDuckName(name: string): string
@@ -115,6 +249,10 @@ local function getTextLength(text: string): number
 	end
 
 	return #text
+end
+
+local function isFiniteNumber(value: number): boolean
+	return value == value and value > -math.huge and value < math.huge
 end
 
 local function isDuckNameUsed(state: PlayerState, name: string, ignoredDuck: DuckState?): boolean
@@ -174,6 +312,13 @@ local function getEggValueUpgradeCost(state: PlayerState): number
 		return 0
 	end
 
+	local tierIndex = state.eggValueLevel + 1
+	local cost = PrototypeConfig.firstUpgrade.costs[tierIndex]
+
+	if typeof(cost) == "number" and cost > 0 then
+		return cost
+	end
+
 	return PrototypeConfig.firstUpgrade.firstCost
 end
 
@@ -185,12 +330,251 @@ local function getDuckFeedCount(state: PlayerState): number
 	return state.inventory[PrototypeConfig.shop.duckFeed.id] or 0
 end
 
+local function getPremiumFeedCount(state: PlayerState): number
+	return state.inventory[PrototypeConfig.shop.premiumFeed.id] or 0
+end
+
+local function getDuckTreatCount(state: PlayerState): number
+	return state.inventory[PrototypeConfig.shop.duckTreat.id] or 0
+end
+
+local function getPillowCount(state: PlayerState): number
+	return state.inventory[PrototypeConfig.shop.pillow.id] or 0
+end
+
+local function getToyCount(state: PlayerState): number
+	return state.inventory[PrototypeConfig.shop.toy.id] or 0
+end
+
+local function getDuckEggProductionMultiplier(duck: DuckState): number
+	local levelOffset = math.max(0, duck.level - PrototypeConfig.duckLevel.startingLevel)
+
+	return 1 + levelOffset * PrototypeConfig.duckLevel.eggProductionBonusPerLevel
+end
+
+local function getEggProductionPerCycle(state: PlayerState): number
+	local productionPerCycle = 0
+
+	for _, duck in state.ducks do
+		productionPerCycle += getDuckEggProductionMultiplier(duck)
+	end
+
+	return productionPerCycle
+end
+
+local function getQuestDefinitions(): {{[string]: any}}
+	return {
+		PrototypeConfig.quests.collectEggs,
+		PrototypeConfig.quests.sellEggs,
+		PrototypeConfig.quests.helpDucks,
+		PrototypeConfig.quests.useTreats,
+		PrototypeConfig.quests.buyDucks,
+		PrototypeConfig.quests.spendCoins,
+		PrototypeConfig.quests.winEggCatch,
+		PrototypeConfig.quests.levelUpDucks,
+	}
+end
+
+local function getQuestDefinition(questId: string): {[string]: any}?
+	for _, questDefinition in getQuestDefinitions() do
+		if questDefinition.id == questId then
+			return questDefinition
+		end
+	end
+
+	return nil
+end
+
+local function getQuestTarget(questDefinition: {[string]: any}, level: number): number
+	return math.max(1, questDefinition.baseTarget * level)
+end
+
+local function getQuestRewardCoins(questDefinition: {[string]: any}, level: number): number
+	return math.max(1, questDefinition.baseRewardCoins * level)
+end
+
+local function getQuestRewardDuckFeed(questDefinition: {[string]: any}, completedLevel: number): number
+	local everyLevels = questDefinition.rewardDuckFeedEveryLevels
+	local amount = questDefinition.rewardDuckFeedAmount
+
+	if typeof(everyLevels) ~= "number" or typeof(amount) ~= "number" or everyLevels <= 0 or amount <= 0 then
+		return 0
+	end
+
+	if completedLevel % everyLevels ~= 0 then
+		return 0
+	end
+
+	return amount
+end
+
+local function getQuestRewardDuckTreat(questDefinition: {[string]: any}, completedLevel: number): number
+	local everyLevels = questDefinition.rewardDuckTreatEveryLevels
+	local amount = questDefinition.rewardDuckTreatAmount
+
+	if typeof(everyLevels) ~= "number" or typeof(amount) ~= "number" or everyLevels <= 0 or amount <= 0 then
+		return 0
+	end
+
+	if completedLevel % everyLevels ~= 0 then
+		return 0
+	end
+
+	return amount
+end
+
+local function getQuestRewardPillow(questDefinition: {[string]: any}, completedLevel: number): number
+	local everyLevels = questDefinition.rewardPillowEveryLevels
+	local amount = questDefinition.rewardPillowAmount
+
+	if typeof(everyLevels) ~= "number" or typeof(amount) ~= "number" or everyLevels <= 0 or amount <= 0 then
+		return 0
+	end
+
+	if completedLevel % everyLevels ~= 0 then
+		return 0
+	end
+
+	return amount
+end
+
+local function createQuestStates(): {[string]: QuestState}
+	local quests = {}
+
+	for _, questDefinition in getQuestDefinitions() do
+		quests[questDefinition.id] = {
+			level = 1,
+			progress = 0,
+		}
+	end
+
+	return quests
+end
+
+local function getQuestState(state: PlayerState, questId: string): QuestState?
+	local quest = state.quests[questId]
+
+	if quest then
+		return quest
+	end
+
+	local questDefinition = getQuestDefinition(questId)
+
+	if not questDefinition then
+		return nil
+	end
+
+	quest = {
+		level = 1,
+		progress = 0,
+	}
+	state.quests[questId] = quest
+
+	return quest
+end
+
+local function grantQuestProgress(state: PlayerState, questId: string, amount: number)
+	local questDefinition = getQuestDefinition(questId)
+	local quest = getQuestState(state, questId)
+
+	if not questDefinition or not quest or amount <= 0 then
+		return
+	end
+
+	quest.progress += amount
+
+	local completionCount = 0
+
+	while quest.progress >= getQuestTarget(questDefinition, quest.level) and completionCount < 100 do
+		local completedLevel = quest.level
+		local target = getQuestTarget(questDefinition, quest.level)
+		local rewardCoins = getQuestRewardCoins(questDefinition, quest.level)
+		local rewardDuckFeed = getQuestRewardDuckFeed(questDefinition, completedLevel)
+		local rewardDuckTreat = getQuestRewardDuckTreat(questDefinition, completedLevel)
+		local rewardPillow = getQuestRewardPillow(questDefinition, completedLevel)
+
+		quest.progress -= target
+		state.coins += rewardCoins
+		if rewardDuckFeed > 0 then
+			state.inventory[PrototypeConfig.shop.duckFeed.id] = (state.inventory[PrototypeConfig.shop.duckFeed.id] or 0) + rewardDuckFeed
+		end
+		if rewardDuckTreat > 0 then
+			state.inventory[PrototypeConfig.shop.duckTreat.id] = (state.inventory[PrototypeConfig.shop.duckTreat.id] or 0) + rewardDuckTreat
+		end
+		if rewardPillow > 0 then
+			state.inventory[PrototypeConfig.shop.pillow.id] = (state.inventory[PrototypeConfig.shop.pillow.id] or 0) + rewardPillow
+		end
+		quest.level += 1
+		completionCount += 1
+	end
+end
+
 local function getVisibleCareDuckCount(state: PlayerState): number
 	return math.min(getDuckCount(state), PrototypeConfig.duckCare.requestVisibleDuckCap)
 end
 
 local function scheduleNextCareRequest(state: PlayerState, now: number)
 	state.nextCareRequestAt = now + PrototypeConfig.duckCare.requestIntervalSeconds
+end
+
+local function getWeatherDefinition(weatherId: string)
+	if weatherId == WEATHER_RAINY_ID then
+		return PrototypeConfig.weather.states.rainy
+	elseif weatherId == WEATHER_CLOUDY_ID then
+		return PrototypeConfig.weather.states.cloudy
+	elseif weatherId == WEATHER_STORMY_ID then
+		return PrototypeConfig.weather.states.stormy
+	end
+
+	return PrototypeConfig.weather.states.sunny
+end
+
+local function scheduleNextWeather(state: PlayerState, now: number)
+	state.nextWeatherAt = now + PrototypeConfig.weather.cycleIntervalSeconds
+end
+
+local function chooseWeatherId(): string
+	local roll = math.random()
+	local stormyChance = PrototypeConfig.weather.stormyChance
+	local rainyChance = PrototypeConfig.weather.rainyChance
+	local cloudyChance = PrototypeConfig.weather.cloudyChance
+
+	if roll <= stormyChance then
+		return WEATHER_STORMY_ID
+	elseif roll <= stormyChance + rainyChance then
+		return WEATHER_RAINY_ID
+	elseif roll <= stormyChance + rainyChance + cloudyChance then
+		return WEATHER_CLOUDY_ID
+	end
+
+	return WEATHER_SUNNY_ID
+end
+
+local function updateWeather(state: PlayerState)
+	local now = os.clock()
+
+	if now < state.nextWeatherAt then
+		return
+	end
+
+	state.weatherId = chooseWeatherId()
+	scheduleNextWeather(state, now)
+end
+
+local function toggleWeather(state: PlayerState)
+	local now = os.clock()
+
+	if state.weatherId == WEATHER_SUNNY_ID then
+		state.weatherId = WEATHER_CLOUDY_ID
+	elseif state.weatherId == WEATHER_CLOUDY_ID then
+		state.weatherId = WEATHER_RAINY_ID
+	elseif state.weatherId == WEATHER_RAINY_ID then
+		state.weatherId = WEATHER_STORMY_ID
+	else
+		state.weatherId = WEATHER_SUNNY_ID
+	end
+
+	scheduleNextWeather(state, now)
 end
 
 local function clearCareRequests(state: PlayerState)
@@ -217,14 +601,54 @@ end
 local function getCareRequestDefinition(requestKind: string)
 	if requestKind == HUNGRY_REQUEST_KIND then
 		return PrototypeConfig.duckCare.requestKinds.hungry
+	elseif requestKind == SLEEPY_REQUEST_KIND then
+		return PrototypeConfig.duckCare.requestKinds.sleepy
+	elseif requestKind == DIRTY_REQUEST_KIND then
+		return PrototypeConfig.duckCare.requestKinds.clean
+	elseif requestKind == THIRSTY_REQUEST_KIND then
+		return PrototypeConfig.duckCare.requestKinds.thirsty
+	elseif requestKind == BORED_REQUEST_KIND then
+		return PrototypeConfig.duckCare.requestKinds.bored
 	end
 
 	return PrototypeConfig.duckCare.requestKinds.pet
 end
 
-local function chooseCareRequestKind(): string
-	if math.random() <= PrototypeConfig.duckCare.hungryRequestChance then
+local function chooseCareRequestKind(state: PlayerState): string
+	local roll = math.random()
+	local weatherDefinition = getWeatherDefinition(state.weatherId)
+	local hungryChance = PrototypeConfig.duckCare.hungryRequestChance
+	local sleepyChance = math.clamp(
+		PrototypeConfig.duckCare.sleepyRequestChance + weatherDefinition.sleepyRequestChanceBonus,
+		0,
+		math.max(0, 1 - hungryChance)
+	)
+	local dirtyChance = math.clamp(
+		PrototypeConfig.duckCare.dirtyRequestChance + weatherDefinition.dirtyRequestChanceBonus,
+		0,
+		math.max(0, 1 - hungryChance - sleepyChance)
+	)
+	local thirstyChance = math.clamp(
+		PrototypeConfig.duckCare.thirstyRequestChance,
+		0,
+		math.max(0, 1 - hungryChance - sleepyChance - dirtyChance)
+	)
+	local boredChance = math.clamp(
+		PrototypeConfig.duckCare.boredRequestChance,
+		0,
+		math.max(0, 1 - hungryChance - sleepyChance - dirtyChance - thirstyChance)
+	)
+
+	if roll <= hungryChance then
 		return HUNGRY_REQUEST_KIND
+	elseif roll <= hungryChance + sleepyChance then
+		return SLEEPY_REQUEST_KIND
+	elseif roll <= hungryChance + sleepyChance + dirtyChance then
+		return DIRTY_REQUEST_KIND
+	elseif roll <= hungryChance + sleepyChance + dirtyChance + thirstyChance then
+		return THIRSTY_REQUEST_KIND
+	elseif roll <= hungryChance + sleepyChance + dirtyChance + thirstyChance + boredChance then
+		return BORED_REQUEST_KIND
 	end
 
 	return PET_REQUEST_KIND
@@ -255,7 +679,13 @@ local function getDuckByPayloadIndex(state: PlayerState, payload: any): (DuckSta
 		end
 	end
 
-	if not duckIndex or duckIndex % 1 ~= 0 or duckIndex < 1 or duckIndex > getDuckCount(state) then
+	if
+		not duckIndex
+		or not isFiniteNumber(duckIndex)
+		or duckIndex % 1 ~= 0
+		or duckIndex < 1
+		or duckIndex > getDuckCount(state)
+	then
 		return nil, 0
 	end
 
@@ -274,19 +704,20 @@ local function getDuckXpToNextLevel(duck: DuckState): number
 	return PrototypeConfig.duckLevel.xpPerLevel
 end
 
-local function addDuckXp(duck: DuckState, amount: number)
+local function addDuckXp(duck: DuckState, amount: number): number
 	local levelConfig = PrototypeConfig.duckLevel
 
 	if amount <= 0 then
-		return
+		return 0
 	end
 
 	if duck.level >= levelConfig.maxLevel then
 		duck.level = levelConfig.maxLevel
 		duck.xp = 0
-		return
+		return 0
 	end
 
+	local startingLevel = duck.level
 	duck.xp += amount
 
 	while duck.xp >= levelConfig.xpPerLevel and duck.level < levelConfig.maxLevel do
@@ -298,6 +729,8 @@ local function addDuckXp(duck: DuckState, amount: number)
 		duck.level = levelConfig.maxLevel
 		duck.xp = 0
 	end
+
+	return duck.level - startingLevel
 end
 
 local function assignCareRequest(state: PlayerState, now: number, forcedKind: string?)
@@ -320,27 +753,59 @@ local function assignCareRequest(state: PlayerState, now: number, forcedKind: st
 	end
 
 	local requestDuckIndex = candidates[math.random(1, #candidates)]
+	local requestKind = forcedKind
+
+	if not requestKind or requestKind == "" then
+		requestKind = if state.pendingForcedCareRequestKind ~= "" then state.pendingForcedCareRequestKind else chooseCareRequestKind(state)
+	end
+
 	state.ducks[requestDuckIndex].hasCareRequest = true
-	state.ducks[requestDuckIndex].careRequestKind = forcedKind or chooseCareRequestKind()
+	state.ducks[requestDuckIndex].careRequestKind = requestKind
+	state.pendingForcedCareRequestKind = ""
 	scheduleNextCareRequest(state, now)
 end
 
 local function createPlayerState(): PlayerState
 	local now = os.clock()
+	local duckFeedId = PrototypeConfig.shop.duckFeed.id
+	local premiumFeedId = PrototypeConfig.shop.premiumFeed.id
 	local state: PlayerState = {
 		eggs = PrototypeConfig.startingEggs,
 		coins = PrototypeConfig.startingCoins,
 		availableEggs = 0,
-		inventory = {},
+		inventory = {
+			[duckFeedId] = PrototypeConfig.startingDuckFeed,
+			[premiumFeedId] = PrototypeConfig.startingPremiumFeed,
+		},
 		ducks = {},
 		nextDuckId = 1,
+		quests = createQuestStates(),
 		eggSellValue = PrototypeConfig.eggSellValue,
 		eggValueLevel = PrototypeConfig.firstUpgrade.startingLevel,
 		nextCareRequestAt = now + PrototypeConfig.duckCare.firstRequestDelaySeconds,
 		nextEggAt = now + PrototypeConfig.eggProductionIntervalSeconds,
+		eggProductionCarry = 0,
+		eggCatchSession = nil,
+		nextEggCatchSessionId = 1,
+		weatherId = PrototypeConfig.weather.defaultId,
+		nextWeatherAt = now + PrototypeConfig.weather.cycleIntervalSeconds,
 		lastActionAt = {},
 		renameError = "",
 		renameErrorDuckIndex = 0,
+		isLoaded = false,
+		saveDirty = false,
+		saveInProgress = false,
+		saveRevision = 0,
+		lastSaveAttemptAt = now,
+		nextAutosaveAt = 0,
+		saveStatus = SAVE_STATUS_LOADING,
+		saveStatusText = getSaveStatusText(SAVE_STATUS_LOADING),
+		isFreshProfile = false,
+		freshProfileNeedsHungryFollowUp = false,
+		freshProfileHungryHandled = false,
+		pendingForcedCareRequestKind = "",
+		visitorHelpEnabled = false,
+		lastDailyClaimDay = 0,
 	}
 
 	for _ = 1, PrototypeConfig.startingDucks do
@@ -348,6 +813,102 @@ local function createPlayerState(): PlayerState
 	end
 
 	return state
+end
+
+local function createDuckFromSavedData(savedDuck: {[string]: any}, now: number): DuckState
+	return {
+		id = savedDuck.id,
+		name = savedDuck.name,
+		level = savedDuck.level,
+		xp = savedDuck.xp,
+		careUntil = 0,
+		lastCareAt = now - PrototypeConfig.duckCare.cooldownSeconds,
+		hasCareRequest = false,
+		careRequestKind = "",
+	}
+end
+
+local function applySavedData(state: PlayerState, savedData: {[string]: any})
+	local now = os.clock()
+	local duckFeed = PrototypeConfig.shop.duckFeed
+	local premiumFeed = PrototypeConfig.shop.premiumFeed
+	local duckTreat = PrototypeConfig.shop.duckTreat
+	local pillow = PrototypeConfig.shop.pillow
+	local toy = PrototypeConfig.shop.toy
+	local highestDuckId = 0
+
+	state.eggs = savedData.eggs
+	state.coins = savedData.coins
+	state.availableEggs = savedData.availableEggs
+	state.inventory = {
+		[duckFeed.id] = savedData.duckFeed,
+		[premiumFeed.id] = savedData.premiumFeed,
+		[duckTreat.id] = savedData.duckTreat,
+		[pillow.id] = savedData.pillow,
+		[toy.id] = savedData.toy,
+	}
+	state.lastDailyClaimDay = savedData.lastDailyClaimDay or 0
+	state.eggValueLevel = math.clamp(savedData.eggValueLevel, 0, EGG_VALUE_MAX_LEVEL)
+	state.eggSellValue = PrototypeConfig.eggSellValue + state.eggValueLevel * PrototypeConfig.firstUpgrade.valueIncrease
+	state.ducks = {}
+
+	for _, savedDuck in savedData.ducks do
+		local duck = createDuckFromSavedData(savedDuck, now)
+		highestDuckId = math.max(highestDuckId, duck.id)
+		table.insert(state.ducks, duck)
+	end
+
+	state.nextDuckId = math.max(savedData.nextDuckId, highestDuckId + 1)
+	state.quests = savedData.quests or createQuestStates()
+
+	if getDuckCount(state) <= 0 then
+		addDuck(state)
+	end
+
+	state.nextCareRequestAt = now + PrototypeConfig.duckCare.firstRequestDelaySeconds
+	state.nextEggAt = now + PrototypeConfig.eggProductionIntervalSeconds
+	state.eggProductionCarry = 0
+	state.eggCatchSession = nil
+	state.nextEggCatchSessionId = 1
+	state.weatherId = PrototypeConfig.weather.defaultId
+	state.nextWeatherAt = now + PrototypeConfig.weather.cycleIntervalSeconds
+	state.lastActionAt = {}
+	state.renameError = ""
+	state.renameErrorDuckIndex = 0
+	state.freshProfileNeedsHungryFollowUp = false
+	state.freshProfileHungryHandled = false
+	state.pendingForcedCareRequestKind = ""
+	state.visitorHelpEnabled = false
+end
+
+local function serializeSaveData(state: PlayerState)
+	local ducks = {}
+
+	for _, duck in state.ducks do
+		table.insert(ducks, {
+			id = duck.id,
+			name = duck.name,
+			level = duck.level,
+			xp = duck.xp,
+		})
+	end
+
+	return {
+		schemaVersion = 6,
+		coins = state.coins,
+		eggs = state.eggs,
+		duckFeed = getDuckFeedCount(state),
+		premiumFeed = getPremiumFeedCount(state),
+		duckTreat = getDuckTreatCount(state),
+		pillow = getPillowCount(state),
+		toy = getToyCount(state),
+		availableEggs = state.availableEggs,
+		eggValueLevel = state.eggValueLevel,
+		nextDuckId = state.nextDuckId,
+		ducks = ducks,
+		quests = state.quests,
+		lastDailyClaimDay = state.lastDailyClaimDay,
+	}
 end
 
 local function updateCareRequest(state: PlayerState)
@@ -362,6 +923,51 @@ local function updateCareRequest(state: PlayerState)
 	end
 
 	assignCareRequest(state, now)
+end
+
+local function serializeQuests(state: PlayerState)
+	local quests = {}
+
+	for _, questDefinition in getQuestDefinitions() do
+		local quest = getQuestState(state, questDefinition.id)
+		local level = if quest then quest.level else 1
+		local progress = if quest then quest.progress else 0
+
+		table.insert(quests, {
+			id = questDefinition.id,
+			displayName = questDefinition.displayName,
+			level = level,
+			progress = progress,
+			target = getQuestTarget(questDefinition, level),
+			rewardCoins = getQuestRewardCoins(questDefinition, level),
+			rewardDuckFeed = getQuestRewardDuckFeed(questDefinition, level),
+			rewardDuckTreat = getQuestRewardDuckTreat(questDefinition, level),
+			rewardPillow = getQuestRewardPillow(questDefinition, level),
+		})
+	end
+
+	return quests
+end
+
+local function serializeFarmVisits(viewer: Player)
+	local visits = {}
+
+	for _, player in Players:GetPlayers() do
+		if player ~= viewer then
+			local state = statesByPlayer[player]
+
+			table.insert(visits, {
+				userId = player.UserId,
+				playerName = player.Name,
+				displayName = getPlayerDisplayName(player),
+				duckCount = if state then getDuckCount(state) else 0,
+				isLoaded = state ~= nil and state.isLoaded,
+				visitorHelpEnabled = state ~= nil and state.isLoaded and state.visitorHelpEnabled,
+			})
+		end
+	end
+
+	return visits
 end
 
 local function serializeDuck(duck: DuckState, index: number, now: number)
@@ -379,7 +985,15 @@ local function serializeDuck(duck: DuckState, index: number, now: number)
 		xpToNextLevel = getDuckXpToNextLevel(duck),
 		mood = if isCaredFor then PrototypeConfig.duckCare.caredMood else PrototypeConfig.duckCare.defaultMood,
 		moodDetail = if duck.hasCareRequest
-			then (if requestKind == HUNGRY_REQUEST_KIND then "This duck is hungry" else "This duck wants care")
+			then (
+				if requestKind == HUNGRY_REQUEST_KIND
+					then "This duck is hungry"
+					elseif requestKind == SLEEPY_REQUEST_KIND then "This duck is sleepy"
+					elseif requestKind == DIRTY_REQUEST_KIND then "This duck feels dirty"
+					elseif requestKind == THIRSTY_REQUEST_KIND then "This duck is thirsty"
+					elseif requestKind == BORED_REQUEST_KIND then "This duck is bored"
+					else "This duck wants care"
+			)
 			elseif isCaredFor then "This duck feels cared for"
 			else "This duck is relaxed",
 		careCooldownSeconds = careCooldownSeconds,
@@ -421,8 +1035,17 @@ local function serializeState(state: PlayerState)
 	local duckPurchaseCost = getDuckPurchaseCost(state)
 	local duckFeed = PrototypeConfig.shop.duckFeed
 	local duckFeedCount = getDuckFeedCount(state)
+	local premiumFeed = PrototypeConfig.shop.premiumFeed
+	local premiumFeedCount = getPremiumFeedCount(state)
+	local duckTreat = PrototypeConfig.shop.duckTreat
+	local duckTreatCount = getDuckTreatCount(state)
+	local pillow = PrototypeConfig.shop.pillow
+	local pillowCount = getPillowCount(state)
+	local toy = PrototypeConfig.shop.toy
+	local toyCount = getToyCount(state)
+	local currentWeatherDefinition = getWeatherDefinition(state.weatherId)
 
-	if careRequestDuckIndex > 0 and careRequestKind == HUNGRY_REQUEST_KIND and duckFeedCount <= 0 then
+	if careRequestDuckIndex > 0 and careRequestKind == HUNGRY_REQUEST_KIND and duckFeedCount + premiumFeedCount <= 0 then
 		canCareForDucks = false
 	end
 
@@ -431,6 +1054,9 @@ local function serializeState(state: PlayerState)
 		coins = state.coins,
 		availableEggs = state.availableEggs,
 		duckFeed = duckFeedCount,
+		premiumFeed = premiumFeedCount,
+		duckTreat = duckTreatCount,
+		pillow = pillowCount,
 		duckCount = duckCount,
 		ducks = ducks,
 		eggSellValue = state.eggSellValue,
@@ -438,9 +1064,23 @@ local function serializeState(state: PlayerState)
 		eggValueMaxLevel = EGG_VALUE_MAX_LEVEL,
 		eggValueUpgradeCost = upgradeCost,
 		duckPurchaseCost = duckPurchaseCost,
+		duckFeedCost = duckFeed.cost,
+		premiumFeedCost = premiumFeed.cost,
+		duckTreatCost = duckTreat.cost,
+		pillowCost = pillow.cost,
+		toy = toyCount,
+		toyCost = toy.cost,
 		duckMood = if hasCaredDuck then PrototypeConfig.duckCare.caredMood else PrototypeConfig.duckCare.defaultMood,
 		duckMoodDetail = if careRequestDuckIndex > 0
-			then (if careRequestKind == HUNGRY_REQUEST_KIND then "A duck is hungry" else "A duck wants care")
+			then (
+				if careRequestKind == HUNGRY_REQUEST_KIND
+					then "A duck is hungry"
+					elseif careRequestKind == SLEEPY_REQUEST_KIND then "A duck is sleepy"
+					elseif careRequestKind == DIRTY_REQUEST_KIND then "A duck needs cleaning"
+					elseif careRequestKind == THIRSTY_REQUEST_KIND then "A duck is thirsty"
+					elseif careRequestKind == BORED_REQUEST_KIND then "A duck is bored"
+					else "A duck wants care"
+			)
 			elseif hasCaredDuck then "Some ducks feel cared for"
 			else "Ducks are relaxed",
 		careRequestDuckIndex = careRequestDuckIndex,
@@ -450,16 +1090,162 @@ local function serializeState(state: PlayerState)
 		secondsUntilNextEgg = math.max(0, math.ceil(state.nextEggAt - now)),
 		canBuyEggValueUpgrade = upgradeCost > 0 and state.coins >= upgradeCost,
 		canBuyDuck = state.coins >= duckPurchaseCost,
-		duckFeedCost = duckFeed.cost,
 		canBuyDuckFeed = state.coins >= duckFeed.cost,
+		canBuyPremiumFeed = state.coins >= premiumFeed.cost,
+		canBuyDuckTreat = state.coins >= duckTreat.cost,
+		canBuyPillow = state.coins >= pillow.cost,
+		canBuyToy = state.coins >= toy.cost,
+		canClaimDailyCheckIn = math.floor(os.time() / 86400) > state.lastDailyClaimDay,
 		canCareForDucks = canCareForDucks,
 		renameError = state.renameError,
 		renameErrorDuckIndex = state.renameErrorDuckIndex,
+		saveStatus = state.saveStatus,
+		saveStatusText = state.saveStatusText,
+		weatherId = currentWeatherDefinition.id,
+		weatherDisplayName = currentWeatherDefinition.displayName,
+		weatherDetail = currentWeatherDefinition.detailText,
+		secondsUntilWeatherChange = math.max(0, math.ceil(state.nextWeatherAt - now)),
+		isFreshProfile = state.isFreshProfile,
+		quests = serializeQuests(state),
 	}
 end
 
+local function getVisibleFarmOwner(viewer: Player): Player?
+	local targetPlayer = farmViewTargetsByPlayer[viewer]
+
+	if not targetPlayer or targetPlayer == viewer then
+		farmViewTargetsByPlayer[viewer] = nil
+		return nil
+	end
+
+	local targetState = statesByPlayer[targetPlayer]
+
+	if not targetState or not targetState.isLoaded then
+		farmViewTargetsByPlayer[viewer] = nil
+		return nil
+	end
+
+	return targetPlayer
+end
+
+local function serializeStateForViewer(viewer: Player, homeState: PlayerState)
+	local owner = getVisibleFarmOwner(viewer)
+	local ownerState = homeState
+
+	if owner then
+		ownerState = statesByPlayer[owner] or homeState
+	end
+
+	local serializedState: {[string]: any} = serializeState(ownerState)
+	local farmOwner = owner or viewer
+
+	serializedState.isVisitingFarm = owner ~= nil
+	serializedState.visitorHelpEnabled = ownerState.visitorHelpEnabled
+	serializedState.farmOwnerUserId = farmOwner.UserId
+	serializedState.farmOwnerName = farmOwner.Name
+	serializedState.farmOwnerDisplayName = getPlayerDisplayName(farmOwner)
+	serializedState.farmVisits = serializeFarmVisits(viewer)
+
+	return serializedState
+end
+
 local function sendState(player: Player, state: PlayerState)
-	stateEvent:FireClient(player, serializeState(state))
+	stateEvent:FireClient(player, serializeStateForViewer(player, state))
+end
+
+local function sendFarmStateToViewers(owner: Player, ownerState: PlayerState)
+	sendState(owner, ownerState)
+
+	for viewer, targetPlayer in farmViewTargetsByPlayer do
+		if targetPlayer == owner then
+			local viewerState = statesByPlayer[viewer]
+
+			if viewerState then
+				sendState(viewer, viewerState)
+			end
+		end
+	end
+end
+
+local function sendNotice(player: Player, payload: {[string]: any})
+	noticeEvent:FireClient(player, payload)
+end
+
+local function saveStateForUser(
+	userId: number,
+	playerName: string,
+	state: PlayerState,
+	statusText: string?,
+	playerForClient: Player?
+): boolean
+	if state.saveInProgress then
+		return false
+	end
+
+	state.saveInProgress = true
+	state.lastSaveAttemptAt = os.clock()
+	setSaveStatus(state, SAVE_STATUS_SAVING, statusText)
+	local saveRevision = state.saveRevision
+	local saveData = serializeSaveData(state)
+
+	if playerForClient and statesByPlayer[playerForClient] == state then
+		sendState(playerForClient, state)
+	end
+
+	local success, errorMessage = PlayerDataService.savePlayerData(userId, playerName, saveData)
+
+	state.saveInProgress = false
+	state.lastSaveAttemptAt = os.clock()
+
+	if success then
+		if state.saveRevision == saveRevision then
+			state.saveDirty = false
+			state.nextAutosaveAt = 0
+			setSaveStatus(state, SAVE_STATUS_SAVED)
+		else
+			state.saveDirty = true
+			state.nextAutosaveAt = os.clock() + AUTOSAVE_DELAY_SECONDS
+			setSaveStatus(state, SAVE_STATUS_PENDING)
+		end
+	else
+		state.saveDirty = true
+		state.nextAutosaveAt = os.clock() + AUTOSAVE_RETRY_DELAY_SECONDS
+		setSaveStatus(state, SAVE_STATUS_FAILED, getStudioSaveFailureText(errorMessage))
+	end
+
+	if playerForClient and statesByPlayer[playerForClient] == state then
+		sendState(playerForClient, state)
+	end
+
+	return success
+end
+
+local function savePlayerState(player: Player, state: PlayerState, statusText: string?): boolean
+	return saveStateForUser(player.UserId, player.Name, state, statusText, player)
+end
+
+local function saveEntryState(entry: SaveEntry, statusText: string?): boolean
+	return saveStateForUser(entry.userId, entry.playerName, entry.state, statusText, nil)
+end
+
+local function requestSavePlayerState(player: Player, state: PlayerState, statusText: string?)
+	if state.saveInProgress then
+		return
+	end
+
+	task.spawn(function()
+		if statesByPlayer[player] == state then
+			savePlayerState(player, state, statusText)
+		end
+	end)
+end
+
+local function waitForActiveSave(state: PlayerState)
+	local startedWaitingAt = os.clock()
+
+	while state.saveInProgress and os.clock() - startedWaitingAt < SAVE_WAIT_TIMEOUT_SECONDS do
+		task.wait(0.1)
+	end
 end
 
 local function produceEggs(state: PlayerState)
@@ -471,8 +1257,13 @@ local function produceEggs(state: PlayerState)
 	end
 
 	local cycles = math.floor((now - state.nextEggAt) / interval) + 1
-	state.availableEggs += cycles * getDuckCount(state)
+	local totalProduction = state.eggProductionCarry + cycles * getEggProductionPerCycle(state)
+	local producedEggs = math.floor(totalProduction)
+
+	state.eggProductionCarry = totalProduction - producedEggs
+	state.availableEggs += producedEggs
 	state.nextEggAt += cycles * interval
+	markSaveDirty(state)
 end
 
 local function isRateLimited(state: PlayerState, actionName: string): boolean
@@ -492,8 +1283,12 @@ local function collectEggs(state: PlayerState)
 		return
 	end
 
-	state.eggs += state.availableEggs
+	local collectedEggs = state.availableEggs
+
+	state.eggs += collectedEggs
 	state.availableEggs = 0
+	grantQuestProgress(state, QUEST_COLLECT_EGGS_ID, collectedEggs)
+	markSaveDirty(state)
 end
 
 local function sellEggs(state: PlayerState)
@@ -501,8 +1296,12 @@ local function sellEggs(state: PlayerState)
 		return
 	end
 
-	state.coins += state.eggs * state.eggSellValue
+	local soldEggs = state.eggs
+
+	state.coins += soldEggs * state.eggSellValue
 	state.eggs = 0
+	grantQuestProgress(state, QUEST_SELL_EGGS_ID, soldEggs)
+	markSaveDirty(state)
 end
 
 local function buyEggValueUpgrade(state: PlayerState)
@@ -515,6 +1314,8 @@ local function buyEggValueUpgrade(state: PlayerState)
 	state.coins -= upgradeCost
 	state.eggValueLevel += 1
 	state.eggSellValue += PrototypeConfig.firstUpgrade.valueIncrease
+	grantQuestProgress(state, QUEST_SPEND_COINS_ID, upgradeCost)
+	markSaveDirty(state)
 end
 
 local function buyDuck(state: PlayerState)
@@ -530,6 +1331,10 @@ local function buyDuck(state: PlayerState)
 	for _ = 1, duckPurchase.duckIncrease do
 		addDuck(state)
 	end
+
+	grantQuestProgress(state, QUEST_BUY_DUCKS_ID, duckPurchase.duckIncrease)
+	grantQuestProgress(state, QUEST_SPEND_COINS_ID, duckPurchaseCost)
+	markSaveDirty(state)
 end
 
 local function buyShopItem(state: PlayerState, payload: any)
@@ -546,13 +1351,232 @@ local function buyShopItem(state: PlayerState, payload: any)
 	end
 
 	local duckFeed = PrototypeConfig.shop.duckFeed
+	local premiumFeed = PrototypeConfig.shop.premiumFeed
+	local duckTreat = PrototypeConfig.shop.duckTreat
+	local pillow = PrototypeConfig.shop.pillow
+	local toy = PrototypeConfig.shop.toy
+	local itemDefinition = nil
 
-	if itemId ~= duckFeed.id or duckFeed.cost <= 0 or state.coins < duckFeed.cost then
+	if itemId == duckFeed.id then
+		itemDefinition = duckFeed
+	elseif itemId == premiumFeed.id then
+		itemDefinition = premiumFeed
+	elseif itemId == duckTreat.id then
+		itemDefinition = duckTreat
+	elseif itemId == pillow.id then
+		itemDefinition = pillow
+	elseif itemId == toy.id then
+		itemDefinition = toy
+	end
+
+	if not itemDefinition or itemDefinition.cost <= 0 or state.coins < itemDefinition.cost then
 		return
 	end
 
-	state.coins -= duckFeed.cost
-	state.inventory[duckFeed.id] = getDuckFeedCount(state) + duckFeed.purchaseAmount
+	state.coins -= itemDefinition.cost
+	state.inventory[itemDefinition.id] = (state.inventory[itemDefinition.id] or 0) + itemDefinition.purchaseAmount
+	grantQuestProgress(state, QUEST_SPEND_COINS_ID, itemDefinition.cost)
+	markSaveDirty(state)
+end
+
+local function useTreatOnDuck(state: PlayerState, payload: any)
+	local duck, _ = getDuckByPayloadIndex(state, payload)
+	local duckTreat = PrototypeConfig.shop.duckTreat
+	local duckTreatCount = getDuckTreatCount(state)
+	local xpAmount = duckTreat.xpAmount or 0
+
+	if not duck or duckTreatCount <= 0 or xpAmount <= 0 then
+		return
+	end
+
+	if duck.level >= PrototypeConfig.duckLevel.maxLevel then
+		return
+	end
+
+	state.inventory[duckTreat.id] = duckTreatCount - 1
+	local levelsGained = addDuckXp(duck, xpAmount)
+	grantQuestProgress(state, QUEST_USE_TREATS_ID, 1)
+	if levelsGained > 0 then
+		grantQuestProgress(state, QUEST_LEVEL_UP_DUCKS_ID, levelsGained)
+	end
+	markSaveDirty(state)
+end
+
+local function formatEggCatchRewardSummary(coins: number, duckFeed: number, duckTreat: number): string
+	local parts = {}
+
+	if coins > 0 then
+		table.insert(parts, string.format("+%d coin%s", coins, if coins == 1 then "" else "s"))
+	end
+
+	if duckFeed > 0 then
+		table.insert(parts, string.format("Feed x%d", duckFeed))
+	end
+
+	if duckTreat > 0 then
+		table.insert(parts, string.format("Treat x%d", duckTreat))
+	end
+
+	if #parts <= 0 then
+		return "No reward this round"
+	end
+
+	return table.concat(parts, "  |  ")
+end
+
+local function getEggCatchReward(score: number): (number, number, number)
+	local rewardConfig = EGG_CATCH_CONFIG.reward
+	local coins = math.min(rewardConfig.maxCoins, math.floor(score / rewardConfig.coinsPerScoreStep))
+	local duckFeed = if score >= rewardConfig.duckFeedScoreThreshold then rewardConfig.duckFeedAmount else 0
+	local duckTreat = if score >= rewardConfig.duckTreatScoreThreshold then rewardConfig.duckTreatAmount else 0
+
+	return coins, duckFeed, duckTreat
+end
+
+local function getMaxPlausibleEggCatchScore(elapsedSeconds: number): number
+	local rewardConfig = EGG_CATCH_CONFIG.reward
+	local firstCatchAt = rewardConfig.firstDropDelaySeconds + rewardConfig.fastestDropTravelSeconds
+	local minDropInterval = rewardConfig.minDropIntervalSeconds
+
+	if elapsedSeconds < firstCatchAt or minDropInterval <= 0 then
+		return 0
+	end
+
+	local catchesAfterFirst = math.floor((elapsedSeconds - firstCatchAt) / minDropInterval)
+
+	return math.min(
+		rewardConfig.maxSubmittedScore,
+		1 + catchesAfterFirst + rewardConfig.scoreValidationSlack
+	)
+end
+
+local function startEggCatchRound(state: PlayerState): number
+	local sessionId = state.nextEggCatchSessionId
+
+	state.nextEggCatchSessionId += 1
+	state.eggCatchSession = {
+		sessionId = sessionId,
+		startedAt = os.clock(),
+		claimed = false,
+	}
+
+	return sessionId
+end
+
+local function getEggCatchClaimPayload(payload: any): (number?, number?)
+	if typeof(payload) ~= "table" then
+		return nil, nil
+	end
+
+	local payloadTable = payload :: {[string]: any}
+	local sessionId = if typeof(payloadTable.sessionId) == "number" then payloadTable.sessionId else nil
+	local score = if typeof(payloadTable.score) == "number" then payloadTable.score else nil
+
+	if not sessionId or not score then
+		return nil, nil
+	end
+
+	if not isFiniteNumber(sessionId) or not isFiniteNumber(score) then
+		return nil, nil
+	end
+
+	if sessionId % 1 ~= 0 or score % 1 ~= 0 then
+		return nil, nil
+	end
+
+	if sessionId < 1 or score < 0 then
+		return nil, nil
+	end
+
+	return sessionId, score
+end
+
+local function claimEggCatchReward(player: Player, state: PlayerState, payload: any)
+	local sessionId, submittedScore = getEggCatchClaimPayload(payload)
+	local session = state.eggCatchSession
+
+	if not sessionId or submittedScore == nil or not session or session.sessionId ~= sessionId then
+		sendNotice(player, {
+			kind = RemoteProtocol.notices.eggCatchReward,
+			success = false,
+			sessionId = sessionId or 0,
+			message = "Round expired",
+		})
+		return
+	end
+
+	if session.claimed then
+		sendNotice(player, {
+			kind = RemoteProtocol.notices.eggCatchReward,
+			success = false,
+			sessionId = sessionId,
+			message = "Reward already claimed",
+		})
+		return
+	end
+
+	local elapsed = os.clock() - session.startedAt
+
+	if elapsed < EGG_CATCH_CONFIG.roundSeconds - EGG_CATCH_CONFIG.reward.claimGraceSeconds then
+		sendNotice(player, {
+			kind = RemoteProtocol.notices.eggCatchReward,
+			success = false,
+			sessionId = sessionId,
+			message = "Round still running",
+		})
+		return
+	end
+
+	local maxPlausibleScore = getMaxPlausibleEggCatchScore(elapsed)
+
+	if submittedScore > maxPlausibleScore then
+		sendNotice(player, {
+			kind = RemoteProtocol.notices.eggCatchReward,
+			success = false,
+			sessionId = sessionId,
+			message = "Score rejected",
+		})
+		return
+	end
+
+	local clampedScore = math.clamp(submittedScore, 0, EGG_CATCH_CONFIG.reward.maxSubmittedScore)
+	local coins, duckFeed, duckTreat = getEggCatchReward(clampedScore)
+	local rewardMessage = formatEggCatchRewardSummary(coins, duckFeed, duckTreat)
+	local duckFeedId = PrototypeConfig.shop.duckFeed.id
+	local duckTreatId = PrototypeConfig.shop.duckTreat.id
+
+	session.claimed = true
+	state.eggCatchSession = nil
+
+	if coins > 0 then
+		state.coins += coins
+	end
+
+	if duckFeed > 0 then
+		state.inventory[duckFeedId] = (state.inventory[duckFeedId] or 0) + duckFeed
+	end
+
+	if duckTreat > 0 then
+		state.inventory[duckTreatId] = (state.inventory[duckTreatId] or 0) + duckTreat
+	end
+
+	if coins > 0 or duckFeed > 0 or duckTreat > 0 then
+		markSaveDirty(state)
+	end
+
+	grantQuestProgress(state, QUEST_WIN_EGG_CATCH_ID, 1)
+	markSaveDirty(state)
+
+	sendNotice(player, {
+		kind = RemoteProtocol.notices.eggCatchReward,
+		success = true,
+		sessionId = sessionId,
+		score = clampedScore,
+		coins = coins,
+		duckFeed = duckFeed,
+		duckTreat = duckTreat,
+		message = rewardMessage,
+	})
 end
 
 local function careForDuck(state: PlayerState, payload: any)
@@ -577,21 +1601,71 @@ local function careForDuck(state: PlayerState, payload: any)
 	if duck.hasCareRequest and duck.careRequestKind == HUNGRY_REQUEST_KIND then
 		local duckFeed = PrototypeConfig.shop.duckFeed
 		local duckFeedCount = getDuckFeedCount(state)
-		xpAmount = PrototypeConfig.duckLevel.xpPerFeed
+		local premiumFeed = PrototypeConfig.shop.premiumFeed
+		local premiumFeedCount = getPremiumFeedCount(state)
 
-		if duckFeedCount <= 0 then
+		if premiumFeedCount > 0 then
+			xpAmount = PrototypeConfig.duckLevel.xpPerPremiumFeed
+			state.inventory[premiumFeed.id] = premiumFeedCount - 1
+		elseif duckFeedCount > 0 then
+			xpAmount = PrototypeConfig.duckLevel.xpPerFeed
+			state.inventory[duckFeed.id] = duckFeedCount - 1
+		else
 			return
 		end
+		if state.isFreshProfile then
+			state.freshProfileHungryHandled = true
+			state.freshProfileNeedsHungryFollowUp = false
+			state.pendingForcedCareRequestKind = ""
+		end
+	elseif duck.hasCareRequest and duck.careRequestKind == DIRTY_REQUEST_KIND then
+		xpAmount = PrototypeConfig.duckLevel.xpPerClean
+	elseif duck.hasCareRequest and duck.careRequestKind == SLEEPY_REQUEST_KIND then
+		local pillow = PrototypeConfig.shop.pillow
+		local pillowCount = getPillowCount(state)
 
-		state.inventory[duckFeed.id] = duckFeedCount - 1
+		if pillowCount > 0 then
+			xpAmount = PrototypeConfig.duckLevel.xpPerPillowRest
+			state.inventory[pillow.id] = pillowCount - 1
+		else
+			xpAmount = PrototypeConfig.duckLevel.xpPerRest
+		end
+	elseif duck.hasCareRequest and duck.careRequestKind == THIRSTY_REQUEST_KIND then
+		xpAmount = PrototypeConfig.duckLevel.xpPerDrink
+	elseif duck.hasCareRequest and duck.careRequestKind == BORED_REQUEST_KIND then
+		local toy = PrototypeConfig.shop.toy
+		local toyCount = getToyCount(state)
+
+		if toyCount > 0 then
+			xpAmount = PrototypeConfig.duckLevel.xpPerToyPlay
+			state.inventory[toy.id] = toyCount - 1
+		else
+			xpAmount = PrototypeConfig.duckLevel.xpPerPlay
+		end
 	end
 
-	addDuckXp(duck, xpAmount)
+	local levelsGained = addDuckXp(duck, xpAmount)
+	grantQuestProgress(state, QUEST_HELP_DUCKS_ID, 1)
+	if levelsGained > 0 then
+		grantQuestProgress(state, QUEST_LEVEL_UP_DUCKS_ID, levelsGained)
+	end
 	duck.hasCareRequest = false
 	duck.careRequestKind = ""
 	duck.lastCareAt = now
 	duck.careUntil = now + PrototypeConfig.duckCare.careDurationSeconds
 	scheduleNextCareRequest(state, now)
+
+	if
+		state.isFreshProfile
+		and state.freshProfileNeedsHungryFollowUp
+		and not state.freshProfileHungryHandled
+	then
+		state.freshProfileNeedsHungryFollowUp = false
+		state.pendingForcedCareRequestKind = HUNGRY_REQUEST_KIND
+		state.nextCareRequestAt = now + PrototypeConfig.duckCare.freshProfileHungryFollowUpDelaySeconds
+	end
+
+	markSaveDirty(state)
 end
 
 local function getRenamePayload(payload: any): (number?, string?)
@@ -684,6 +1758,140 @@ local function renameDuck(player: Player, state: PlayerState, payload: any)
 	duck.name = filteredName
 	state.renameError = ""
 	state.renameErrorDuckIndex = 0
+	markSaveDirty(state)
+end
+
+local function getVisitUserIdFromPayload(payload: any): number?
+	local userId = nil
+
+	if typeof(payload) == "number" then
+		userId = payload
+	elseif typeof(payload) == "table" then
+		local payloadTable = payload :: {[string]: any}
+
+		if typeof(payloadTable.userId) == "number" then
+			userId = payloadTable.userId
+		end
+	end
+
+	-- Studio multiplayer test clients can use negative UserIds; the live-player lookup below
+	-- still prevents visiting anything except a real same-server Player instance.
+	if not userId or not isFiniteNumber(userId) or userId % 1 ~= 0 or userId == 0 then
+		return nil
+	end
+
+	return userId
+end
+
+local function getPlayerByUserId(userId: number): Player?
+	for _, player in Players:GetPlayers() do
+		if player.UserId == userId then
+			return player
+		end
+	end
+
+	return nil
+end
+
+local function visitFarm(player: Player, payload: any)
+	local userId = getVisitUserIdFromPayload(payload)
+
+	if not userId then
+		return
+	end
+
+	if userId == player.UserId then
+		farmViewTargetsByPlayer[player] = nil
+		return
+	end
+
+	local targetPlayer = getPlayerByUserId(userId)
+	local targetState: PlayerState? = nil
+
+	if targetPlayer then
+		targetState = statesByPlayer[targetPlayer]
+	end
+
+	if not targetPlayer or not targetState or not targetState.isLoaded then
+		return
+	end
+
+	farmViewTargetsByPlayer[player] = targetPlayer
+end
+
+local function returnHomeFarm(player: Player)
+	farmViewTargetsByPlayer[player] = nil
+end
+
+local function canVisitorHelpRequest(requestKind: string): boolean
+	return requestKind == PET_REQUEST_KIND
+		or requestKind == SLEEPY_REQUEST_KIND
+		or requestKind == DIRTY_REQUEST_KIND
+		or requestKind == THIRSTY_REQUEST_KIND
+		or requestKind == BORED_REQUEST_KIND
+end
+
+local function toggleVisitorHelp(player: Player, state: PlayerState)
+	state.visitorHelpEnabled = not state.visitorHelpEnabled
+	sendFarmStateToViewers(player, state)
+end
+
+local function visitorHelpDuck(visitor: Player, payload: any)
+	local owner = farmViewTargetsByPlayer[visitor]
+
+	if not owner then
+		return
+	end
+
+	local ownerState = statesByPlayer[owner]
+
+	if not ownerState or not ownerState.isLoaded or not ownerState.visitorHelpEnabled then
+		return
+	end
+
+	local duck, duckIndex = getDuckByPayloadIndex(ownerState, payload)
+	local careRequestDuckIndex = getCareRequestDuckIndex(ownerState)
+
+	if not duck or duckIndex ~= careRequestDuckIndex then
+		return
+	end
+
+	local requestKind = if duck.careRequestKind ~= "" then duck.careRequestKind else PET_REQUEST_KIND
+
+	if not duck.hasCareRequest or not canVisitorHelpRequest(requestKind) then
+		return
+	end
+
+	local now = os.clock()
+
+	duck.hasCareRequest = false
+	duck.careRequestKind = ""
+	duck.careUntil = now + PrototypeConfig.duckCare.careDurationSeconds
+	scheduleNextCareRequest(ownerState, now)
+	sendFarmStateToViewers(owner, ownerState)
+end
+
+local function claimDailyCheckIn(player: Player, state: PlayerState)
+	local currentDay = math.floor(os.time() / 86400)
+
+	if currentDay <= state.lastDailyClaimDay then
+		sendNotice(player, {
+			kind = RemoteProtocol.notices.dailyCheckInRejected,
+			message = "Daily already claimed",
+		})
+		return
+	end
+
+	local rewardCoins = PrototypeConfig.dailyCheckIn.rewardCoins
+
+	state.coins += rewardCoins
+	state.lastDailyClaimDay = currentDay
+	markSaveDirty(state)
+
+	sendNotice(player, {
+		kind = RemoteProtocol.notices.dailyCheckInClaimed,
+		rewardCoins = rewardCoins,
+	})
 end
 
 local function runTesterAction(player: Player, state: PlayerState, actionName: string)
@@ -693,13 +1901,24 @@ local function runTesterAction(player: Player, state: PlayerState, actionName: s
 
 	if actionName == RemoteProtocol.actions.testAddCoins then
 		state.coins += TESTER_COIN_GRANT
+		markSaveDirty(state)
 	elseif actionName == RemoteProtocol.actions.testReadyEggs then
 		state.availableEggs += TESTER_READY_EGG_GRANT
+		markSaveDirty(state)
 	elseif actionName == RemoteProtocol.actions.testAddDuck then
 		for _ = 1, PrototypeConfig.duckPurchase.duckIncrease do
 			addDuck(state)
 		end
-	elseif actionName == RemoteProtocol.actions.testCareRequest or actionName == RemoteProtocol.actions.testHungryRequest then
+
+		markSaveDirty(state)
+	elseif
+		actionName == RemoteProtocol.actions.testCareRequest
+		or actionName == RemoteProtocol.actions.testHungryRequest
+		or actionName == RemoteProtocol.actions.testSleepyRequest
+		or actionName == RemoteProtocol.actions.testDirtyRequest
+		or actionName == RemoteProtocol.actions.testThirstyRequest
+		or actionName == RemoteProtocol.actions.testBoredRequest
+	then
 		local now = os.clock()
 
 		for _, duck in state.ducks do
@@ -707,11 +1926,22 @@ local function runTesterAction(player: Player, state: PlayerState, actionName: s
 			duck.lastCareAt = now - PrototypeConfig.duckCare.cooldownSeconds - 1
 		end
 
-		local requestKind = if actionName == RemoteProtocol.actions.testHungryRequest then HUNGRY_REQUEST_KIND else PET_REQUEST_KIND
+		local requestKind = if actionName == RemoteProtocol.actions.testHungryRequest
+			then HUNGRY_REQUEST_KIND
+			elseif actionName == RemoteProtocol.actions.testSleepyRequest then SLEEPY_REQUEST_KIND
+			elseif actionName == RemoteProtocol.actions.testDirtyRequest then DIRTY_REQUEST_KIND
+			elseif actionName == RemoteProtocol.actions.testThirstyRequest then THIRSTY_REQUEST_KIND
+			elseif actionName == RemoteProtocol.actions.testBoredRequest then BORED_REQUEST_KIND
+			else PET_REQUEST_KIND
 
 		assignCareRequest(state, now, requestKind)
+	elseif actionName == RemoteProtocol.actions.testToggleWeather then
+		toggleWeather(state)
 	elseif actionName == RemoteProtocol.actions.testReset then
 		state = createPlayerState()
+		state.isLoaded = true
+		setSaveStatus(state, SAVE_STATUS_PENDING)
+		markSaveDirty(state)
 		statesByPlayer[player] = state
 	end
 
@@ -725,7 +1955,36 @@ local function onAction(player: Player, actionName: any, payload: any?)
 		return
 	end
 
+	if actionName == RemoteProtocol.actions.requestState then
+		sendState(player, state)
+		return
+	end
+
+	if not state.isLoaded then
+		sendState(player, state)
+		return
+	end
+
 	if isRateLimited(state, actionName) then
+		return
+	end
+
+	if actionName == RemoteProtocol.actions.visitFarm then
+		visitFarm(player, payload)
+		sendState(player, state)
+		return
+	elseif actionName == RemoteProtocol.actions.returnHomeFarm then
+		returnHomeFarm(player)
+		sendState(player, state)
+		return
+	elseif actionName == RemoteProtocol.actions.visitorHelpDuck then
+		visitorHelpDuck(player, payload)
+		sendState(player, state)
+		return
+	end
+
+	if farmViewTargetsByPlayer[player] ~= nil then
+		sendState(player, state)
 		return
 	end
 
@@ -735,6 +1994,7 @@ local function onAction(player: Player, actionName: any, payload: any?)
 	end
 
 	produceEggs(state)
+	updateWeather(state)
 	updateCareRequest(state)
 
 	if actionName == RemoteProtocol.actions.collectEggs then
@@ -747,10 +2007,25 @@ local function onAction(player: Player, actionName: any, payload: any?)
 		buyDuck(state)
 	elseif actionName == RemoteProtocol.actions.buyShopItem then
 		buyShopItem(state, payload)
+	elseif actionName == RemoteProtocol.actions.useTreatOnDuck then
+		useTreatOnDuck(state, payload)
 	elseif actionName == RemoteProtocol.actions.careForDucks then
 		careForDuck(state, payload)
 	elseif actionName == RemoteProtocol.actions.renameDuck then
 		renameDuck(player, state, payload)
+	elseif actionName == RemoteProtocol.actions.toggleVisitorHelp then
+		toggleVisitorHelp(player, state)
+		return
+	elseif actionName == RemoteProtocol.actions.startEggCatchRound then
+		local sessionId = startEggCatchRound(state)
+		sendNotice(player, {
+			kind = RemoteProtocol.notices.eggCatchStarted,
+			sessionId = sessionId,
+		})
+	elseif actionName == RemoteProtocol.actions.claimEggCatchReward then
+		claimEggCatchReward(player, state, payload)
+	elseif actionName == RemoteProtocol.actions.claimDailyCheckIn then
+		claimDailyCheckIn(player, state)
 	end
 
 	sendState(player, state)
@@ -758,24 +2033,147 @@ end
 
 local function onPlayerAdded(player: Player)
 	local state = createPlayerState()
+	local saveEntry = {
+		userId = player.UserId,
+		playerName = player.Name,
+		state = state,
+	}
+
 	statesByPlayer[player] = state
+	recentSaveEntriesByUserId[player.UserId] = saveEntry
+	sendState(player, state)
+
+	local loadSuccess, savedData, errorMessage = PlayerDataService.loadPlayer(player)
+
+	if statesByPlayer[player] ~= state then
+		return
+	end
+
+	if savedData then
+		applySavedData(state, savedData)
+		state.saveDirty = false
+		state.isFreshProfile = false
+		setSaveStatus(state, SAVE_STATUS_SAVED)
+	elseif loadSuccess then
+		markSaveDirty(state)
+		state.isFreshProfile = true
+		state.freshProfileNeedsHungryFollowUp = true
+		state.freshProfileHungryHandled = false
+		state.pendingForcedCareRequestKind = ""
+		setSaveStatus(state, SAVE_STATUS_PENDING)
+	else
+		state.saveDirty = false
+		state.isFreshProfile = false
+		state.freshProfileNeedsHungryFollowUp = false
+		state.freshProfileHungryHandled = false
+		state.pendingForcedCareRequestKind = ""
+		setSaveStatus(state, SAVE_STATUS_FAILED, getStudioSaveFailureText(errorMessage))
+		sendState(player, state)
+		return
+	end
+
+	state.isLoaded = true
+
+	local currentDay = math.floor(os.time() / 86400)
+
+	if currentDay > state.lastDailyClaimDay then
+		claimDailyCheckIn(player, state)
+	end
+
 	sendState(player, state)
 end
 
 local function onPlayerRemoving(player: Player)
+	local state = statesByPlayer[player]
+
+	if state and state.isLoaded then
+		local saveEntry = {
+			userId = player.UserId,
+			playerName = player.Name,
+			state = state,
+		}
+
+		recentSaveEntriesByUserId[player.UserId] = saveEntry
+		produceEggs(state)
+		waitForActiveSave(state)
+
+		if state.saveDirty and not state.saveInProgress then
+			print(string.format("[Duck] Saving data for %s on leave.", player.Name))
+			savePlayerState(player, state, "Saving")
+		end
+
+		task.delay(60, function()
+			if recentSaveEntriesByUserId[player.UserId] == saveEntry then
+				recentSaveEntriesByUserId[player.UserId] = nil
+			end
+		end)
+	end
+
 	statesByPlayer[player] = nil
+	farmViewTargetsByPlayer[player] = nil
+
+	for viewer, targetPlayer in farmViewTargetsByPlayer do
+		if targetPlayer == player then
+			farmViewTargetsByPlayer[viewer] = nil
+		end
+	end
 end
 
 local function startProductionLoop()
 	task.spawn(function()
 		while started do
 			for player, state in statesByPlayer do
-				produceEggs(state)
-				updateCareRequest(state)
+				if state.isLoaded then
+					produceEggs(state)
+					updateWeather(state)
+					updateCareRequest(state)
+
+					if
+						state.saveDirty
+						and not state.saveInProgress
+						and state.nextAutosaveAt > 0
+						and os.clock() >= state.nextAutosaveAt
+					then
+						requestSavePlayerState(player, state, "Autosaving")
+					end
+				end
+
 				sendState(player, state)
 			end
 
 			task.wait(UPDATE_INTERVAL_SECONDS)
+		end
+	end)
+end
+
+local function bindShutdownSave()
+	game:BindToClose(function()
+		local entriesToSave: {[number]: SaveEntry} = {}
+
+		for player, state in statesByPlayer do
+			if state.isLoaded then
+				entriesToSave[player.UserId] = {
+					userId = player.UserId,
+					playerName = player.Name,
+					state = state,
+				}
+			end
+		end
+
+		for userId, entry in recentSaveEntriesByUserId do
+			if entry.state.isLoaded then
+				entriesToSave[userId] = entry
+			end
+		end
+
+		for _, entry in entriesToSave do
+			produceEggs(entry.state)
+			waitForActiveSave(entry.state)
+
+			if entry.state.saveDirty and not entry.state.saveInProgress then
+				print(string.format("[Duck] Saving data for %s during shutdown.", entry.playerName))
+				saveEntryState(entry, "Saving")
+			end
 		end
 	end)
 end
@@ -790,6 +2188,7 @@ function PlayerStateService.start()
 	local remoteFolder = getOrCreateRemoteFolder()
 	actionEvent = getOrCreateRemoteEvent(remoteFolder, RemoteProtocol.actionEventName)
 	stateEvent = getOrCreateRemoteEvent(remoteFolder, RemoteProtocol.stateEventName)
+	noticeEvent = getOrCreateRemoteEvent(remoteFolder, RemoteProtocol.noticeEventName)
 
 	actionEvent.OnServerEvent:Connect(onAction)
 	Players.PlayerAdded:Connect(onPlayerAdded)
@@ -800,6 +2199,7 @@ function PlayerStateService.start()
 	end
 
 	startProductionLoop()
+	bindShutdownSave()
 end
 
 return PlayerStateService

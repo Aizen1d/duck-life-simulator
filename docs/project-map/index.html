@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1">
+		<title>Duck Project Map</title>
+		<link rel="stylesheet" href="styles.css">
+	</head>
+	<body>
+		<header class="app-header">
+			<div>
+				<p class="eyebrow">Duck repository analysis</p>
+				<h1>Project Map</h1>
+			</div>
+			<div class="header-actions">
+				<a href="../../README.md">README</a>
+				<a href="../GAME_BRIEF.md">Game Brief</a>
+				<a href="../PROJECT_STRUCTURE.md">Project Structure</a>
+				<a href="../../default.project.json">Rojo Tree</a>
+			</div>
+		</header>
+
+		<main class="workspace">
+			<aside class="left-panel" aria-label="Project map controls">
+				<section class="panel-section">
+					<label class="search-label" for="searchInput">Search structure</label>
+					<input id="searchInput" class="search-input" type="search" placeholder="Try core loop, FarmScreen, DuckAction">
+				</section>
+
+				<section class="panel-section">
+					<h2>Map Lens</h2>
+					<div id="lensButtons" class="lens-grid"></div>
+				</section>
+
+				<section class="panel-section">
+					<h2>Layers</h2>
+					<div id="layerFilters" class="chip-grid"></div>
+				</section>
+
+				<section class="panel-section">
+					<h2>Connections</h2>
+					<div id="edgeFilters" class="chip-grid compact"></div>
+				</section>
+
+				<section class="panel-section stats">
+					<h2>Snapshot</h2>
+					<dl>
+						<div>
+							<dt>Rojo services</dt>
+							<dd>6</dd>
+						</div>
+						<div>
+							<dt>Source modules</dt>
+							<dd>13</dd>
+						</div>
+						<div>
+							<dt>Runtime remotes</dt>
+							<dd>3</dd>
+						</div>
+						<div>
+							<dt>Save schema</dt>
+							<dd>v6</dd>
+						</div>
+					</dl>
+				</section>
+
+				<section class="panel-section note">
+					<h2>Source Basis</h2>
+					<p>This map is derived from the current Rojo tree, `src` modules, shared protocol/config files, README, game brief, roadmap, and project structure docs.</p>
+				</section>
+			</aside>
+
+			<section class="map-shell" aria-label="Interactive mind map">
+				<div class="map-toolbar">
+					<div class="toolbar-group">
+						<button id="fitButton" type="button">Fit</button>
+						<button id="resetButton" type="button">Reset</button>
+						<button id="focusButton" type="button">Focus Selected</button>
+					</div>
+					<div class="zoom-control">
+						<label for="zoomInput">Zoom</label>
+						<input id="zoomInput" type="range" min="0.45" max="1.45" step="0.01" value="0.8">
+						<span id="zoomValue">80%</span>
+					</div>
+				</div>
+
+				<div id="mapViewport" class="map-viewport">
+					<div id="mapCanvas" class="map-canvas">
+						<svg id="connectionSvg" class="connection-svg" aria-hidden="true"></svg>
+						<div id="nodeLayer" class="node-layer"></div>
+					</div>
+				</div>
+			</section>
+
+			<aside class="right-panel" aria-label="Selected node details">
+				<section id="detailPanel" class="detail-panel">
+					<p class="eyebrow">Selected node</p>
+					<h2 id="detailTitle">Duck</h2>
+					<p id="detailMeta" class="detail-meta">Repository root</p>
+					<p id="detailDescription" class="detail-description">Click any node or connection to inspect how it fits into the project.</p>
+					<a id="detailFile" class="file-link" href="../../README.md">Open related file</a>
+
+					<div class="detail-block">
+						<h3>Responsibilities</h3>
+						<ul id="detailResponsibilities"></ul>
+					</div>
+
+					<div class="detail-block">
+						<h3>Connected To</h3>
+						<ul id="detailConnections"></ul>
+					</div>
+				</section>
+			</aside>
+		</main>
+
+		<script src="script.js"></script>
+	</body>
+</html>

@@ -95,6 +95,7 @@ Current files:
 - `init.server.luau`
 - `GameServer.luau`
 - `PlayerStateService.luau`
+- `PlayerDataService.luau`
 
 ### `src/shared`
 
@@ -114,6 +115,14 @@ Current files:
 - `RemoteProtocol.luau`
 - `Types.luau`
 
+## Project Analysis Tools
+
+### `docs/project-map`
+
+Static HTML/CSS/JS dashboard for visually analyzing the repository structure, Rojo mappings, module dependencies, runtime remotes, server-owned state, save-data flow, UI screens, high-level gameplay loop, supporting gameplay systems, roadmap direction, and key docs.
+
+Open `docs/project-map/index.html` directly in a browser. It has no package install or build step and is not mapped into Roblox by Rojo.
+
 ## Runtime Remotes
 
 The server creates these runtime instances under `ReplicatedStorage`:
@@ -123,12 +132,14 @@ ReplicatedStorage
   DuckRemotes
     DuckAction
     DuckState
+    DuckNotice
 ```
 
-- `DuckAction`: client-to-server `RemoteEvent` for named UI actions. The `care_for_ducks` action may include a validated `duckIndex` payload for the selected duck.
-- `DuckState`: server-to-client `RemoteEvent` for serialized farm state.
+- `DuckAction`: client-to-server `RemoteEvent` for named UI actions. The `care_for_ducks` action may include a validated `duckIndex` payload for the selected duck; `buy_shop_item` may include a validated `itemId`; `rename_duck` may include a validated `duckIndex` and filtered display name request; `visit_farm` may include a validated same-server target `UserId`.
+- `DuckState`: server-to-client `RemoteEvent` for serialized farm state, including Quest V0 summaries and Farm Visit V0 view metadata for client display.
+- `DuckNotice`: server-to-client `RemoteEvent` for one-off notices such as Egg Catch session starts, Egg Catch reward results, and daily check-in claim or rejection feedback.
 
-`DuckAction` includes gameplay actions and Studio-only tester actions. Tester actions must stay guarded on the server with `RunService:IsStudio()` and must not become production rewards.
+`DuckAction` includes gameplay actions and Studio-only tester actions, including the `test_toggle_weather` Studio action. Tester actions must stay guarded on the server with `RunService:IsStudio()` and must not become production rewards.
 
 The names live in `src/shared/RemoteProtocol.luau`. Do not add new remotes or payload shapes without updating the protocol, security expectations, and docs.
 
@@ -155,4 +166,3 @@ The following files are generated or local-only and should not be edited by hand
 - `*.rbxl.lock`
 - `sourcemap.json`
 - `Packages`
-

@@ -1,14 +1,14 @@
 # Save Data Design
 
-Save Data V0 is a design pass for persistent player progress in `Duck`. It does not implement DataStore code yet.
+Save Data V0 defines and implements persistent player progress for `Duck`.
 
-The goal is to define what should persist, what should remain session-only, and what rules future implementation must follow before the project starts writing player data.
+The goal is to keep the first persistence pass small, server-owned, validated, and easy to reset during Studio testing.
 
 ## Current Decision
 
-Save Data V0 is approved for design, not runtime implementation.
+Save Data V0 is implemented in `src/server/PlayerDataService.luau` and integrated through `src/server/PlayerStateService.luau`.
 
-The current playable prototype still runs session-only. The next implementation pass may add DataStore persistence only after this design is reviewed and the Studio testing setup is confirmed.
+The current playable prototype loads player data on join, autosaves dirty state about `3` seconds after meaningful changes, retries failed autosaves after a longer delay, saves on leave, attempts final saves on shutdown, and includes Studio-only tester controls guarded by `RunService:IsStudio()`. The visible farm-screen save status indicator has been removed; save verification should use Studio Output logs and rejoin checks. The current saved schema is `schemaVersion = 6` because Toy inventory and `lastDailyClaimDay` now persist alongside Duck Feed, Premium Feed, Treat, Pillow, and Quest V0/V1/V2 progress.
 
 ## Official Roblox References Checked
 
@@ -33,16 +33,22 @@ Save the smallest set of values that make the current prototype feel continuous 
 - `coins`
 - `eggs`
 - `duckFeed`
+- `premiumFeed`
+- `duckTreat`
+- `pillow`
+- `toy`
+- `availableEggs`
 - `eggValueLevel`
 - owned ducks
 - per-duck stable id
 - per-duck display name
 - per-duck level
 - per-duck XP
+- quest level/progress for Quest V0/V1/V2 collect, sell, help, use-treats, buy-ducks, and spend-coins quests
+- `lastDailyClaimDay` (integer day-since-epoch for Daily Check-in V0)
 
 Do not save these in V0:
 
-- available uncollected eggs on the nest
 - seconds until next egg
 - temporary happy mood timers
 - care cooldown timers
@@ -54,33 +60,39 @@ Do not save these in V0:
 - profile panel state
 - shop screen state
 - Studio tester state
+- quest completion floating feedback
 
-These values are session presentation or timers. They should restart cleanly on join.
+These values are session presentation or timers. They should restart cleanly on join. Ready eggs on the nest are not treated as temporary for V0; `availableEggs` should persist so players do not lose ready-to-collect eggs when rejoining.
 
-## Proposed Data Shape
+## Data Shape
 
 Use one standard DataStore object per player.
 
-Suggested store name:
+Store name:
 
 ```text
 DuckPlayerDataV1
 ```
 
-Suggested key:
+Key:
 
 ```text
 player_<UserId>
 ```
 
-Suggested object:
+Object:
 
 ```lua
 {
-	schemaVersion = 1,
+	schemaVersion = 6,
 	coins = 0,
 	eggs = 0,
 	duckFeed = 0,
+	premiumFeed = 0,
+	duckTreat = 0,
+	pillow = 0,
+	toy = 0,
+	availableEggs = 0,
 	eggValueLevel = 0,
 	nextDuckId = 2,
 	ducks = {
@@ -91,6 +103,33 @@ Suggested object:
 			xp = 0,
 		},
 	},
+	quests = {
+		collect_eggs = {
+			level = 1,
+			progress = 0,
+		},
+		sell_eggs = {
+			level = 1,
+			progress = 0,
+		},
+		help_ducks = {
+			level = 1,
+			progress = 0,
+		},
+		use_treats = {
+			level = 1,
+			progress = 0,
+		},
+		buy_ducks = {
+			level = 1,
+			progress = 0,
+		},
+		spend_coins = {
+			level = 1,
+			progress = 0,
+		},
+	},
+	lastDailyClaimDay = 0,
 }
 ```
 
@@ -104,10 +143,12 @@ When a player joins:
 - If no data exists, server creates a default state from `PrototypeConfig`.
 - If data exists, server validates every field before using it.
 - Missing fields fall back to safe defaults.
-- Invalid numbers are clamped to allowed ranges.
+- Invalid, `NaN`, or infinite numbers fall back to safe defaults or are clamped to allowed ranges.
 - Invalid duck records are skipped or repaired.
 - If all duck records are invalid or missing, create one default duck.
+- Missing quest records fall back to level `1` and progress `0`.
 - Do not trust saved display names blindly if future cross-user display rules change.
+- If load fails, do not autosave a fresh default state over a possible existing save.
 
 ## Save Rules
 
@@ -119,10 +160,10 @@ When a player leaves:
 
 During long sessions:
 
-- Autosave periodically.
-- Use a modest interval, such as `120` seconds, until the game needs a different cadence.
-- Avoid saving on every click, egg tick, care action, or UI interaction.
-- Save after meaningful state changes only if the save is debounced.
+- Autosave shortly after meaningful state changes.
+- Debounce autosave so repeated egg ticks or UI actions do not save on every click.
+- Current prototype cadence is about `3` seconds after the first dirty change.
+- If a save attempt fails, wait longer before retrying so DataStore errors do not cause rapid repeated writes.
 
 On server shutdown:
 
@@ -139,15 +180,23 @@ The first implementation does not need OrderedDataStores, leaderboards, global n
 
 Persistent values must stay server-owned:
 
-- `coins`: integer, minimum `0`
-- `eggs`: integer, minimum `0`
-- `duckFeed`: integer, minimum `0`
-- `eggValueLevel`: integer, minimum `0`, maximum current upgrade max
-- `nextDuckId`: integer, at least one greater than the highest saved duck id
-- duck `id`: positive integer, unique within that player's save
+- `coins`: finite integer, minimum `0`
+- `eggs`: finite integer, minimum `0`
+- `duckFeed`: finite integer, minimum `0`
+- `premiumFeed`: finite integer, minimum `0`
+- `duckTreat`: finite integer, minimum `0`
+- `pillow`: finite integer, minimum `0`
+- `toy`: finite integer, minimum `0`
+- `lastDailyClaimDay`: finite integer day-since-epoch, minimum `0`
+- `availableEggs`: finite integer, minimum `0`
+- `eggValueLevel`: finite integer, minimum `0`, maximum `PrototypeConfig.firstUpgrade.maxLevel`
+- `nextDuckId`: finite integer, at least one greater than the highest saved duck id
+- duck `id`: positive finite integer, unique within that player's save
 - duck `name`: string, `2` to `16` characters after trim, unique within that player's duck list
-- duck `level`: integer, between `PrototypeConfig.duckLevel.startingLevel` and `PrototypeConfig.duckLevel.maxLevel`
-- duck `xp`: integer, minimum `0`, below `xpPerLevel` unless max-level rules intentionally allow otherwise
+- duck `level`: finite integer, between `PrototypeConfig.duckLevel.startingLevel` and `PrototypeConfig.duckLevel.maxLevel`
+- duck `xp`: finite integer, minimum `0`, below `xpPerLevel` unless max-level rules intentionally allow otherwise
+- quest `level`: finite integer, minimum `1`
+- quest `progress`: finite integer, minimum `0`, below that quest level target
 
 Client requests must never send these values as authoritative save data.
 
@@ -168,31 +217,42 @@ Every saved object must include `schemaVersion`.
 
 For V0:
 
-- `schemaVersion = 1`
+- `schemaVersion = 6`
+- Existing `schemaVersion = 5` saves load with default Toy inventory at `0`, default `lastDailyClaimDay` at `0`, and default `buy_ducks`/`spend_coins` quests at level `1`, progress `0`.
+- Existing `schemaVersion = 4` saves load with default Pillow inventory at `0`, default Toy inventory at `0`, default `lastDailyClaimDay` at `0`, and default `use_treats`/`buy_ducks`/`spend_coins` quests at level `1`, progress `0`.
+- Existing `schemaVersion = 3` saves load with default Premium Feed inventory at `0`, default Pillow inventory at `0`, default Toy inventory at `0`, default `lastDailyClaimDay` at `0`, and default `use_treats`/`buy_ducks`/`spend_coins` quests at level `1`, progress `0`.
+- Existing `schemaVersion = 2` saves load with default Treat inventory at `0`, Premium Feed inventory at `0`, Pillow inventory at `0`, Toy inventory at `0`, default `lastDailyClaimDay` at `0`, and default `use_treats`/`buy_ducks`/`spend_coins` quests at level `1`, progress `0`.
+- Existing `schemaVersion = 1` saves load with default Quest V0/V1/V2 records at level `1`, progress `0`, default Treat/Pillow/Toy inventories at `0`, and default `lastDailyClaimDay` at `0`.
 - Unknown future fields should be ignored by older code.
 - New future fields should have defaults.
 - Migration code should be explicit and recorded in this document before implementation.
 
-Expected future migration pressures:
+## Planned Schema Growth by Roadmap Phase
 
-- mutations
-- breeding
-- duck traits
-- duck appearance variants
-- profile history
-- expanded inventory
-- more upgrades
-- weather or event progress
+The approved long-term roadmap (`docs/ROADMAP.md`, 2026-06-11) maps expected schema versions to content phases. These are planning targets, not implemented schemas: before each bump, the exact fields, defaults, validation rules, and migration steps must be recorded in this document, and each phase may merge or split versions if implementation order changes.
+
+- `schemaVersion = 7` (Phase 4): last-seen UTC timestamp for Offline Progress V0, streak count and streak last-claim day, daily quest day stamp and slot states, badge grant flags, settings (music, sfx, reduced motion), and Feature Unlock Ladder flags only where a rung cannot be derived from existing server-owned progress (derive instead of save wherever possible).
+- `schemaVersion = 8` (Phase 5): per-duck family id and rarity, Duckdex discovered map, collection reward claim flags, starter-choice completion flag, Mystery Duck Box inventory. Existing ducks migrate as `Classic Yellow`.
+- `schemaVersion = 9` (Phase 6): egg inventory by type, incubator slot states with finish timestamps, hatch pity counters.
+- `schemaVersion = 10` (Phase 7): per-duck evolution stage, Star Grain inventory, duck level cap validation raised from `5` to `10`, per-duck daily XP counter and day stamp for the `150` XP/day pacing cap.
+- `schemaVersion = 11` (Phase 8): farm level and farm points, unlocked zones, decoration inventory, placed decoration anchor assignments.
+- `schemaVersion = 12` (Phase 9): per-duck mutation id, breeding timers and per-duck cooldowns, breeding pity counter.
+- `schemaVersion = 13` (Phase 10): gift cooldowns, like counters, visitor book entries, profile titles. Leaderboards use separate OrderedDataStore keys, and offline farm snapshots require their own store and privacy design doc before implementation.
+- `schemaVersion = 14` (Phase 11): per-event progress, Festival Tickets, claimed event stock, owned event items. Event definitions stay server config, not save data.
+- `schemaVersion = 15` (Phase 12): legacy count, Legacy Feathers, owned legacy boosts, per-family mastery XP, legacy duck mark.
+
+Phase 7B (Pond Games) adds fields to whichever schema version is current when it ships: saved battle team duck ids, Pond Tour stage progress, first-clear reward flags, per-duck trained stat bonuses (`Heart`/`Splash`/`Pace`/`Spirit`, each capped at `+20`), and the active Training Camp session (duck id, stat id, server-derived finish timestamp). Training timestamps follow the same rules as all timers: server-derived, validated against forged or future-dated values on load, and a duck in training is excluded from egg production and offline accrual. Battle outcomes themselves are never saved as trust inputs; every match is server-resolved at play time.
+
+Monetization waves (`docs/PRODUCT_PLAN.md`) add fields to whichever schema version is current when the wave ships: a capped list of processed developer-product receipt ids for idempotent grants, owned-cosmetic flags (accessory packs, decoration themes, event bundles), and a per-duck equipped cosmetic accessory slot. Gamepass ownership is platform-owned and is checked via `MarketplaceService`, not saved. Receipt processing must write the grant and receipt id before returning `PurchaseGranted`.
+
+General rules for every bump: timestamps are server-derived (`os.time`) and never client-reported; all timers validate against forged or future-dated values on load; counters are finite non-negative integers; and every new field gets a safe default so older saves load cleanly.
 
 ## Studio Testing Requirements
 
-Before implementing persistence:
-
-- Publish or use a separate test experience.
-- Enable Studio access to API services only for the test experience.
-- Do not point Studio tests at a live production data store.
-- Add a Studio-only reset/save debug path only if it is guarded by `RunService:IsStudio()`.
-- Test load, save on leave, autosave, invalid data fallback, and DataStore failure handling.
+- Use this current place for V0 testing, as approved by the user.
+- Enable Studio access to API services deliberately for this place before testing.
+- Use the versioned `DuckPlayerDataV1` store name, Studio Output logs, and stop/rejoin checks to verify prototype data during testing.
+- Test load, save on leave, autosave, shutdown save, invalid data fallback, Quest V0 persistence, Premium Feed and Treat inventory persistence, and DataStore failure handling. Load failure must not write default data over a possible existing save.
 
 ## Security Requirements
 
@@ -202,32 +262,32 @@ Before implementing persistence:
 - Validate every loaded value because old saves, test data, or manual edits can be malformed.
 - Keep Studio tester actions guarded by `RunService:IsStudio()`.
 
-## V0 Implementation Checklist
+## V0 Implementation Status
 
-Before coding:
+- [x] Added server `PlayerDataService`.
+- [x] Added serialization from runtime state to the V0 save shape.
+- [x] Added validation from loaded data into runtime state.
+- [x] Load on `PlayerAdded`.
+- [x] Save on `PlayerRemoving`.
+- [x] Add periodic autosave.
+- [x] Add `BindToClose` final save attempts.
+- [x] Add Studio-only tester helpers guarded by `RunService:IsStudio()`.
+- [x] Remove the visible save status UI after autosave and leave-save behavior were verified; keep internal save status for server flow and debugging.
+- [x] Update `docs/WORKFLOW.md` with persistence test steps.
+- [x] Persist Quest V0 level/progress, Treat inventory, and Premium Feed inventory in schema version `4`.
+- [x] Persist Pillow inventory and Quest V1 `use_treats` level/progress in schema version `5`.
+- [x] Persist Toy inventory, `lastDailyClaimDay`, and Quest V2 `buy_ducks`/`spend_coins` level/progress in schema version `6`.
 
-- Review this design and confirm the save scope.
-- Decide whether `eggs` should persist or whether only `coins` and ducks should persist.
-- Decide whether the first implementation should include an on-screen save status indicator.
-- Confirm Studio API-services setup is using a test experience.
+## Approved V0 Decisions
 
-Implementation steps:
+- Held eggs persist.
+- Ready eggs on the nest persist as `availableEggs`.
+- Duck Feed, Premium Feed, Treat inventory, duck names, profiles, level, XP, stable duck IDs, and Quest V0 level/progress persist.
+- Visible save status UI is not included in the current farm screen; save behavior is verified with Studio Output logs and rejoin checks.
+- Player-facing save failure warnings are not included in V0; failures should be logged and represented internally first.
+- DataStore testing can use this current place, with deliberate Studio API-services setup, Studio Output logs, and reload checks.
 
-1. Add a server `PlayerDataService`.
-2. Add serialization from runtime state to the V0 save shape.
-3. Add validation from loaded data into runtime state.
-4. Load on `PlayerAdded`.
-5. Save on `PlayerRemoving`.
-6. Add periodic autosave.
-7. Add `BindToClose` final save attempts.
-8. Add Studio-only testing helpers only if needed.
-9. Update `docs/WORKFLOW.md` with persistence test steps.
-10. Update this document with any implementation deviations.
+## Remaining Open Questions
 
-## Open Questions
+- Should future duck IDs become strings before mutation and breeding add parent/child references? This must be answered before the Phase 9 (`schemaVersion = 12`) breeding implementation; the current integer `nextDuckId` scheme looks sufficient if breeding only stores parent ids, not full lineage trees.
 
-- Should held eggs persist, or should only coins and duck ownership persist?
-- Should unavailable ready eggs be discarded on rejoin or converted into held eggs?
-- Should the first save implementation expose a small `Saved` or `Saving` status in UI?
-- Should save failures show a player-facing warning in the prototype?
-- Should future duck IDs become strings before mutation and breeding add parent/child references?

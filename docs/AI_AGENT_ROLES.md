@@ -183,9 +183,9 @@ The security agent reviews player-trust, abuse, exploit, and data-integrity risk
 Responsibilities:
 
 - Treat all client input as untrusted, including UI button requests, RemoteEvents, RemoteFunctions, local timers, inventory values, and economy values.
-- Verify server-authoritative ownership of eggs, coins, upgrades, duck state, rewards, cooldowns, and future save data.
+- Verify server-authoritative ownership of eggs, coins, upgrades, duck state, rewards, cooldowns, and save data.
 - Check remote argument validation, rate limits, duplicate reward risks, stale state, permission checks, and replay-style abuse.
-- Check DataStore persistence, monetization rewards, badges, text, user-generated content, analytics, and moderation-sensitive flows when introduced.
+- Check DataStore persistence, monetization rewards, badges, text, user-generated content, analytics, and moderation-sensitive flows when changed or introduced.
 - Use official Roblox docs for security-sensitive platform behavior before recommending implementation.
 - Create QA or security test cases for invalid remotes, repeated calls, negative numbers, huge numbers, multiple players, reconnects, and failed saves.
 - Keep security notes in relevant docs, tasks, or changelog entries.

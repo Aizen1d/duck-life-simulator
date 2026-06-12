@@ -26,3 +26,7 @@ screenGui.Parent = playerGui
 
 local root = ReactRoblox.createRoot(screenGui)
 root:render(React.createElement(App))
+
+script.Destroying:Connect(function()
+	root:unmount()
+end)

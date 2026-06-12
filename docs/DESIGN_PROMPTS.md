@@ -54,7 +54,9 @@ cute cozy 2D Roblox duck farming simulator, bright pond farm, soft cartoon shape
 - Keep prompts clear about aspect ratio and target use.
 - Use placeholders until the user approves final art direction.
 - For the first prototype, choose one approved variant per needed visual target instead of generating multiple near-duplicate variants.
-- Avoid adding mechanics, rarity tiers, characters, Robux, premium currency, ads, loot boxes, or monetization.
+- Avoid adding unapproved mechanics, Robux, premium currency, ads, loot boxes, or monetization art.
+- Rarity frames, golden eggs, evolution stages, mutations, and event theming are allowed only inside the Future Content Prompt Batch prompts that explicitly call for them, because those systems are approved direction in `docs/ROADMAP.md`. Everywhere else the original guardrails stay.
+- Every duck prompt must reuse the Duck Body Template Anchor so all families, stages, and mutations read as the same character system.
 
 ## Size Targets
 
@@ -85,12 +87,17 @@ For plain backgrounds, also use:
 no UI, no buttons, no counters, no panels, no cards, no labels, no readable text, no numbers, no menus, no icons, no upgrade box, no shop, no logo
 ```
 
+For Future Content Prompt Batch prompts that explicitly ask for rarity frames, golden eggs, evolution sparkle, mutation overlays, or event theming, drop only the conflicting terms (`no rarity effects`, `no golden egg`) from the negative prompt and keep every other guardrail.
+
+For Pond Games battle prompts, drop only `no combat`: those scenes depict friendly splash-and-quack contests. Keep `no weapons` in every prompt — Pond Games never uses weapons, and nothing in the art may look like fighting that hurts.
+
 ## Design Agent Review Notes
 
 For each generated image, review:
 
 - Does it fit Cozy Pond Farm?
 - Is it readable on mobile?
+- For duck variant sheets (families, evolution stages, mutations): scale the image down to roughly in-game sprite size (about 64 pixels) and confirm each variant is still identifiable at a glance; reject sheets that only read at full resolution.
 - Does it support the egg, coin, collect, sell, and upgrade loop?
 - Could the scene support autonomous duck idle, wander, sleep, or reaction animation without implying player-controlled movement?
 - Does it avoid unapproved mechanics or extra systems?
@@ -115,6 +122,20 @@ Start with these first:
 11. `Duck Profile Portrait Sheet`
 
 Save temporary outputs in `assets/design/generated`. Move only approved images into tracked folders.
+
+After the first batch is approved, run the Future Content Prompt Batch in roadmap phase order so art approval stays ahead of implementation:
+
+1. Phase 4: `Badge and Achievement Icon Sheet`, `Daily Streak Calendar UI Mockup`
+2. Phase 5: `Duck Family Lineup Sheet` first (approve all palettes in one image), then `Duck Family Asset Set - Template` once per family, `Rarity Frame and Tag Sheet`, `Duckdex Screen Mockup`, `Mystery Duck Box and Starter Choice Mockup`
+3. Phase 6: `Egg Type Icon Sheet`, `Incubator and Hatch Stage Sheet`, `Hatch Reveal Background`
+4. Phase 7: `Evolution Stage Sheet - Template` per family, `Evolution Celebration Background`, `Progression Item Icon Sheet`; then Phase 7B: `Pond Games Battle Scene Mockup`, `Battle Skill and Class Icon Sheet`, `Training Camp Scene and Stat Icon Sheet`
+5. Phase 8: `Farm Zone Background - Meadow`, `Farm Zone Background - Orchard`, `Decoration Icon Sheet - Starter Set`, `Photo Frame and Sticker Sheet`
+6. Phase 9: `Mutation Overlay Sheet`, `Breeding Nursery Background`
+7. Phase 10: `Social UI Mockup`
+8. Phase 11: `Seasonal Event Background - Template` and `Event Duck Concept - Template` per season, `Minigame Scene Mockup - Bread Toss`, `Minigame Scene Mockup - Lily Hop`
+9. Phase 12: `Golden Pond Background`
+10. Wave 1 prep: `Accessory Icon Sheet - Concept Only` (final art waits for the monetization wave sign-off per `docs/PRODUCT_PLAN.md`).
+11. Before full launch: the Marketing Asset Prompts (`Game Icon`, `Store Thumbnail - Template` per scene).
 
 ## Ready-To-Run Prompts
 
@@ -391,6 +412,640 @@ Create a friendly 2D logo concept for a Roblox duck farming simulator named Duck
 Size: 1:1 square, target 1024x1024.
 
 This is the only prompt where readable title text is allowed. Text should say only: Duck. No subtitle, no Robux, no premium badge, no extra mechanics, no realistic 3D render, no clutter.
+```
+
+## Future Content Prompt Batch (Roadmap Phases 4-12)
+
+These prompts cover the approved long-term content in `docs/ROADMAP.md`. They are ready to run, but every output still follows the normal review flow: generate into `assets/design/generated`, review, then promote only approved images. Generate batches in phase order so each phase's art is approved before its implementation starts.
+
+Consistency rules for this batch:
+
+- Start every prompt with the Cozy Pond Farm style anchor.
+- Include the Duck Body Template Anchor in every prompt that contains a duck.
+- Use the family palette table verbatim so the same family always generates with the same colors.
+- Templates contain `{PLACEHOLDER}` slots. Fill the slot from the tables below; change nothing else between runs so outputs stay comparable.
+
+### Duck Body Template Anchor
+
+Use this in every duck prompt, in addition to the style anchor:
+
+```text
+one consistent duck body template across all ducks: round plump body, simple small flat bill, two small dot eyes, small wing bump, short tail nub, no neck, stubby orange feet, three-quarter side view facing right, soft cartoon shading, flat clean 2D, strong readable silhouette, same proportions as a cute round rubber-duck toy
+```
+
+### Duck Family Palette Table
+
+Fill `{FAMILY}` and `{PALETTE}` from this table. Do not invent new families.
+
+| Family | Rarity | Palette text |
+| --- | --- | --- |
+| Classic Yellow | Common | warm duck-yellow body, orange bill and feet, soft cream belly |
+| Mallard Green | Common | soft sage-green head fading to warm cream body, small teal wing accent, amber bill |
+| Choco Brown | Uncommon | warm cocoa-brown body, cream chest patch, caramel bill |
+| Snowy White | Uncommon | soft warm white body, pale blue-grey shading, light peach bill |
+| Blossom Pink | Rare | soft blossom-pink body, tiny white cheek dots, rose-pink bill |
+| Twilight Blue | Epic | dusk indigo-blue body, faint pale speckles on the wings, deep coral bill |
+| Golden | Legendary | softly glowing warm gold body, gentle shimmer highlights, amber bill |
+
+### Season Theme Table
+
+Fill `{SEASON}` and `{THEME}` from this table.
+
+| Season | Event | Theme text |
+| --- | --- | --- |
+| Spring | Spring Bloom | cherry blossom petals drifting, tulip beds, pastel flower garlands on the fence |
+| Summer | Summer Splash | cheerful bunting, pond floaties, a small lemonade stall, bright sunshine sparkle on water |
+| Autumn | Autumn Harvest | pumpkins, golden falling leaves, hay bales, warm string lights |
+| Winter | Winter Frost | soft snow cover, frosted pond edge, warm fairy lights, knitted bunting |
+
+### Badge and Achievement Icon Sheet
+
+Status: `Ready` (Phase 4)
+
+Target use: Roblox badge art and in-game milestone feedback.
+
+Suggested save name: `assets/design/generated/badge-icons-cozy-v1.png`
+
+```text
+cute cozy 2D Roblox duck farming simulator, bright pond farm, soft cartoon shapes, yellow ducks, teal pond water, green grass, white panels, coral accents, cheerful and readable.
+
+Create a 2D icon sheet of round achievement badge icons for a cozy duck farming simulator. Include separated circular badge icons with clear spacing: first duck, first egg collected, one hundred eggs, level-up star duck, seven-day streak calendar, first rename ribbon, first minigame trophy, first farm visit heart. Each badge is a simple soft circular medallion with one clear symbol, duck-yellow and pond-teal palette, coral ribbon accents.
+
+Size: 1:1 square sheet, target 2048x2048, plain light background, separated for cropping.
+
+No readable text, no numbers, no Robux, no premium currency, no realistic 3D render, no dark theme, no watermark.
+```
+
+### Daily Streak Calendar UI Mockup
+
+Status: `Ready` (Phase 4)
+
+Target use: streak track and daily quest panel layout reference.
+
+Suggested save name: `assets/ui/mockups/streak-calendar-cozy-v1.png`
+
+```text
+cute cozy 2D Roblox duck farming simulator, bright pond farm, soft cartoon shapes, clean mobile-friendly UI, white panels, coral action buttons, cheerful and readable.
+
+Create a 2D UI mockup of a daily reward streak panel for a cozy duck farming simulator. Show a white rounded panel with a row of seven day slots, the first few slots checked with soft coral check marks, one highlighted today slot with a small gift box, the seventh slot slightly larger with a glowing treat reward, and below it a smaller panel with three daily quest rows each with an icon slot, a progress bar, and a reward chip area.
+
+Size: 1:1 square sheet, target 2048x2048.
+
+Leave all text areas blank or as simple placeholder marks. No readable text, no numbers, no Robux, no premium currency, no battle pass styling, no dark theme, no realistic 3D render, no watermark.
+```
+
+### Duck Family Lineup Sheet
+
+Status: `Ready` (Phase 5)
+
+Target use: approve all seven family palettes in one image before per-family sets are generated.
+
+Suggested save name: `assets/design/generated/duck-family-lineup-cozy-v1.png`
+
+```text
+cute cozy 2D Roblox duck farming simulator, bright pond farm, soft cartoon shapes, cheerful and readable.
+
+one consistent duck body template across all ducks: round plump body, simple small flat bill, two small dot eyes, small wing bump, short tail nub, no neck, stubby orange feet, three-quarter side view facing right, soft cartoon shading, flat clean 2D, strong readable silhouette, same proportions as a cute round rubber-duck toy.
+
+Create a 2D character lineup sheet of seven ducks standing in one row, all using the exact same body template and pose, differing only in color palette and small markings: 1 warm duck-yellow body with orange bill, 2 soft sage-green head fading to warm cream body with small teal wing accent, 3 warm cocoa-brown body with cream chest patch, 4 soft warm white body with pale blue-grey shading, 5 soft blossom-pink body with tiny white cheek dots, 6 dusk indigo-blue body with faint pale wing speckles and deep coral bill, 7 softly glowing warm gold body with gentle shimmer highlights.
+
+Size: 1:1 square sheet, target 2048x2048, plain light background, equal spacing between ducks for cropping.
+
+No accessories, no hats, no text, no background scene, no realistic feathers, no 3D render, no watermark.
+```
+
+### Duck Family Asset Set - Template
+
+Status: `Ready` (Phase 5, run once per approved family)
+
+Target use: runtime sprites and portraits for one family.
+
+Suggested save name: `assets/design/generated/duck-family-{family-slug}-set-v1.png`
+
+```text
+cute cozy 2D Roblox duck farming simulator, bright pond farm, soft cartoon shapes, cheerful and readable.
+
+one consistent duck body template across all ducks: round plump body, simple small flat bill, two small dot eyes, small wing bump, short tail nub, no neck, stubby orange feet, three-quarter side view facing right, soft cartoon shading, flat clean 2D, strong readable silhouette, same proportions as a cute round rubber-duck toy.
+
+Create a 2D transparent-background asset sheet of one duck character: the {FAMILY} duck with {PALETTE}. Show the same duck in separated poses with clear spacing: standing idle facing right, standing idle facing left, sleeping curled with closed eyes, happy with open bill and small joy lines, and one larger front-facing portrait bust for profile UI.
+
+Size: 1:1 square sheet, target 2048x2048, separated for cropping.
+
+Keep the body shape, face, and palette identical across all poses. No accessories, no hats, no text, no background scene, no rarity effects, no realistic feathers, no 3D render, no watermark.
+```
+
+### Rarity Frame and Tag Sheet
+
+Status: `Ready` (Phase 5)
+
+Target use: Duckdex cards, hatch reveals, and shop cards.
+
+Suggested save name: `assets/design/generated/rarity-frames-cozy-v1.png`
+
+```text
+cute cozy 2D Roblox duck farming simulator, clean mobile-friendly UI, white panels, cheerful and readable.
+
+Create a 2D UI sheet of five rounded card frames for rarity tiers in a cozy duck collection book, in one row from plain to fancy: 1 simple soft grey-green frame, 2 fresh leaf-green frame with one small leaf corner accent, 3 sky-blue frame with gentle ribbon corners, 4 violet frame with soft sparkle corner accents, 5 warm gold frame with a gentle glow and tiny star sparkles. All frames stay soft, rounded, and cozy rather than aggressive or dark. Below the frames add five matching small rounded tag chips with blank label space.
+
+Size: 1:1 square sheet, target 2048x2048, plain light background, separated for cropping.
+
+Rarity glow is allowed on the two fanciest frames only and must stay soft and pastel. No readable text, no Robux, no loot box, no dark theme, no realistic 3D render, no watermark.
+```
+
+### Duckdex Screen Mockup
+
+Status: `Ready` (Phase 5)
+
+Target use: collection book screen layout reference.
+
+Suggested save name: `assets/ui/mockups/duckdex-screen-cozy-v1.png`
+
+```text
+cute cozy 2D Roblox duck farming simulator, bright pond farm, soft cartoon shapes, clean mobile-friendly UI, white panels, coral action buttons, cheerful and readable.
+
+Create a 16:9 UI mockup of a duck collection book screen for a cozy duck farming simulator. Show a soft paper-like book panel with a grid of duck collection cards: some cards show cute round ducks of different colors, some cards show only a dark duck silhouette with a soft question mark feel, each card has a small rarity frame, and the top of the screen has a collection progress bar area and back button area. Keep generous mobile-friendly spacing.
+
+Size: 16:9 landscape, target 1920x1080.
+
+Leave all text areas blank or as placeholder marks. No readable text, no numbers, no Robux, no loot boxes, no dark theme, no realistic 3D render, no watermark.
+```
+
+### Mystery Duck Box and Starter Choice Mockup
+
+Status: `Ready` (Phase 5)
+
+Target use: starter duck choice screen and Mystery Duck Box reward moment layout reference.
+
+Suggested save name: `assets/ui/mockups/duck-choice-mockup-cozy-v1.png`
+
+```text
+cute cozy 2D Roblox duck farming simulator, bright pond farm, soft cartoon shapes, clean mobile-friendly UI, white panels, coral action buttons, cheerful and readable.
+
+one consistent duck body template across all ducks: round plump body, simple small flat bill, two small dot eyes, small wing bump, short tail nub, no neck, stubby orange feet, three-quarter side view facing right, soft cartoon shading, flat clean 2D, strong readable silhouette, same proportions as a cute round rubber-duck toy.
+
+Create a 2D UI concept sheet with two separated layouts: 1 a starter duck choice screen showing three white rounded cards side by side, each holding one cute round duck of a different color (soft sage green, warm cocoa brown, soft warm white), a blank name bar and a coral pick-button area under each card, and a gentle headline space above; 2 a mystery gift box moment showing a cute wooden gift crate with a coral ribbon, lid popped open with soft pastel sparkles, and three duck cards fanned above it with one card gently raised and highlighted, plus a small blank odds-label area near the box.
+
+Size: 1:1 square sheet, target 2048x2048.
+
+The box must feel like a cozy gift, not a casino chest: soft colors, gentle sparkle, no slot machine, no spinning wheel, no dramatic rarity explosion, no dark vault styling. Leave all text blank or as placeholder marks. No readable text, no numbers, no Robux, no premium currency, no loot box styling, no realistic 3D render, no watermark.
+```
+
+### Egg Type Icon Sheet
+
+Status: `Ready` (Phase 6)
+
+Target use: egg inventory, shop, and incubator icons.
+
+Suggested save name: `assets/design/generated/egg-type-icons-cozy-v1.png`
+
+```text
+cute cozy 2D Roblox duck farming simulator, soft cartoon shapes, cheerful and readable.
+
+Create a 2D transparent-background icon sheet of four egg types for a cozy duck farming simulator, separated with clear spacing: 1 plain warm cream egg, 2 speckled egg with soft teal speckles, 3 golden egg with a gentle warm glow and tiny sparkle, 4 festival egg with soft pastel confetti dots and a tiny ribbon painted band. All eggs share the same simple rounded egg shape and soft highlight style and must read clearly at small mobile UI size.
+
+Size: 1:1 square sheet, target 2048x2048, separated for cropping.
+
+The golden egg glow must stay soft and cozy. No cracks, no readable text, no Robux, no loot box styling, no rainbow gradients, no realistic photography, no 3D render, no watermark.
+```
+
+### Incubator and Hatch Stage Sheet
+
+Status: `Ready` (Phase 6)
+
+Target use: incubator slot states and hatch animation references.
+
+Suggested save name: `assets/design/generated/incubator-stages-cozy-v1.png`
+
+```text
+cute cozy 2D Roblox duck farming simulator, bright pond farm, soft cartoon shapes, cheerful and readable.
+
+Create a 2D transparent-background sheet of a cozy straw nest incubator in five separated stages with clear spacing: 1 empty straw nest with a soft blanket, 2 nest holding one cream egg, 3 nest with the egg tilted and tiny motion lines as it wiggles, 4 nest with the egg showing a small clean crack line and a soft light seam, 5 nest with a gentle warm glow burst and floating sparkle dots at the hatch moment, no duck visible yet.
+
+Size: 1:1 square sheet, target 2048x2048, separated for cropping.
+
+Keep the same nest drawing across all five stages. The glow stays soft pastel gold. No scary cracks, no readable text, no Robux, no loot box styling, no dark theme, no realistic 3D render, no watermark.
+```
+
+### Hatch Reveal Background
+
+Status: `Ready` (Phase 6)
+
+Target use: full-screen background behind the hatch reveal UI moment.
+
+Suggested save name: `assets/ui/backgrounds/hatch-reveal-cozy-v1.png`
+
+```text
+cute cozy 2D Roblox duck farming simulator, soft cartoon shapes, cheerful and readable.
+
+Create a clean 16:9 2D background for a hatch reveal moment: a soft radial glow of warm cream and pale gold light centered on screen, gentle pastel sparkle dots, soft teal and sky-blue vignette edges, completely empty center where the egg and duck UI will be placed by the game.
+
+Size: 16:9 landscape, target 1920x1080.
+
+This is a background only. No egg, no duck, no UI, no buttons, no panels, no readable text, no numbers, no icons, no logo, no dark void, no realistic 3D render, no watermark.
+```
+
+### Evolution Stage Sheet - Template
+
+Status: `Ready` (Phase 7, run once per approved family)
+
+Target use: Stage 1 to Stage 3 art for one family line.
+
+Suggested save name: `assets/design/generated/evolution-stages-{family-slug}-v1.png`
+
+```text
+cute cozy 2D Roblox duck farming simulator, bright pond farm, soft cartoon shapes, cheerful and readable.
+
+one consistent duck body template across all ducks: round plump body, simple small flat bill, two small dot eyes, small wing bump, short tail nub, no neck, stubby orange feet, three-quarter side view facing right, soft cartoon shading, flat clean 2D, strong readable silhouette, same proportions as a cute round rubber-duck toy.
+
+Create a 2D transparent-background evolution sheet of the {FAMILY} duck with {PALETTE}, shown three times in a row with clear spacing, same pose and same palette, growing fancier left to right: stage one is the plain base duck; stage two is slightly larger with a small soft feather crest on the head, slightly brighter palette, and one tiny sparkle accent; stage three is fullest with a graceful plume crest, longer elegant tail feathers, a delicate thin golden leaf circlet resting on the head, and a very soft warm glow rim.
+
+Size: 1:1 square sheet, target 2048x2048, separated for cropping.
+
+The duck must stay clearly the same family across all three stages. Evolution sparkle stays soft and pastel. No other accessories, no readable text, no Robux, no dark theme, no realistic feathers, no 3D render, no watermark.
+```
+
+### Evolution Celebration Background
+
+Status: `Ready` (Phase 7)
+
+Target use: background behind the short skippable evolution celebration scene.
+
+Suggested save name: `assets/ui/backgrounds/evolution-celebration-cozy-v1.png`
+
+```text
+cute cozy 2D Roblox duck farming simulator, soft cartoon shapes, cheerful and readable.
+
+Create a clean 16:9 2D background for a duck evolution celebration: the cozy pond farm at golden hour with warm soft light, gentle floating sparkle motes, a soft light beam falling on an empty grassy spot at center stage where the evolving duck UI will be placed, teal pond glinting warmly in the background.
+
+Size: 16:9 landscape, target 1920x1080.
+
+This is a background only. No duck, no UI, no buttons, no panels, no readable text, no numbers, no icons, no logo, no dark sky, no realistic 3D render, no watermark.
+```
+
+### Progression Item Icon Sheet
+
+Status: `Ready` (Phases 7-12)
+
+Target use: Star Grain, Festival Ticket, Legacy Feather, gift box, and mastery medal icons.
+
+Suggested save name: `assets/design/generated/progression-item-icons-cozy-v1.png`
+
+```text
+cute cozy 2D Roblox duck farming simulator, soft cartoon shapes, cheerful and readable.
+
+Create a 2D transparent-background icon sheet of special progression items for a cozy duck farming simulator, separated with clear spacing: 1 a small pouch of glowing star-shaped golden grain, 2 a single large star grain kernel with a soft twinkle, 3 a rounded pastel festival ticket with a scalloped edge and small duck silhouette stamp, 4 a large elegant golden feather with a soft glow, 5 a cute wrapped gift box with a coral ribbon bow, 6 three round mastery medals in bronze, silver, and gold with a tiny duck emblem.
+
+Size: 1:1 square sheet, target 2048x2048, separated for cropping, readable at small mobile UI size.
+
+Glow stays soft and pastel. No readable text, no numbers, no Robux, no premium currency styling, no loot boxes, no realistic metal render, no 3D render, no watermark.
+```
+
+### Pond Games Battle Scene Mockup
+
+Status: `Ready` (Phase 7B)
+
+Target use: friendly duck contest scene layout reference.
+
+Suggested save name: `assets/ui/mockups/pond-games-scene-cozy-v1.png`
+
+```text
+cute cozy 2D Roblox duck farming simulator, bright pond farm, soft cartoon shapes, clean mobile-friendly UI, white panels, coral action buttons, cheerful and readable.
+
+one consistent duck body template across all ducks: round plump body, simple small flat bill, two small dot eyes, small wing bump, short tail nub, no neck, stubby orange feet, soft cartoon shading, flat clean 2D, strong readable silhouette, same proportions as a cute round rubber-duck toy.
+
+Create a 16:9 UI mockup of a friendly duck contest scene at a pond: two teams of three cute round ducks of different colors facing each other across calm teal water, one duck mid-turn sending a playful arc of water splash with soft droplets, small heart and energy-bubble chips above each duck, a row of four large rounded skill buttons with blank icon slots along the bottom center, and a small turn-order strip at the top. The mood is a cheerful pond game between friends, like a splash contest at summer camp, not a fight.
+
+Size: 16:9 landscape, target 1920x1080.
+
+Leave all text areas blank or placeholder marks. No weapons, no anger, no damage effects, no dark arena, no readable text, no numbers, no Robux, no premium currency, no realistic 3D render, no watermark.
+```
+
+### Battle Skill and Class Icon Sheet
+
+Status: `Ready` (Phase 7B)
+
+Target use: class badges and the V0 skill icon set.
+
+Suggested save name: `assets/design/generated/pond-games-skill-icons-cozy-v1.png`
+
+```text
+cute cozy 2D Roblox duck farming simulator, soft cartoon shapes, cheerful and readable.
+
+Create a 2D transparent-background icon sheet for a friendly duck contest mode, separated with clear spacing. Top row, four round class badges: 1 guard, a sturdy bubble shield; 2 splasher, a bold water drop with motion lines; 3 quacker, a cheerful musical quack note; 4 helper, a warm heart with a tiny snack. Below them, sixteen small square skill icons in soft pastel tiles, four per class theme: water splashes and waves, bubble shields and shell guards, music notes, charm sparkles and lullaby moons, snacks, cheer pom-poms, gentle hearts, and feather gusts. All icons must read clearly at small mobile button size.
+
+Size: 1:1 square sheet, target 2048x2048, separated for cropping.
+
+No weapons, no fire, no skulls, no anger, no damage slashes, no readable text, no numbers, no Robux, no rarity glow, no dark theme, no realistic 3D render, no watermark.
+```
+
+### Training Camp Scene and Stat Icon Sheet
+
+Status: `Ready` (Phase 7B)
+
+Target use: Training Camp corner scene and the four duck stat icons.
+
+Suggested save name: `assets/design/generated/training-camp-cozy-v1.png`
+
+```text
+cute cozy 2D Roblox duck farming simulator, bright pond farm, soft cartoon shapes, cheerful and readable.
+
+Create a 2D sheet with two separated parts. Part one: a cozy duck training camp corner of the farm as a small scene — a tiny obstacle course of stepping stones and a little ramp, a small striped camp tent, a balance log over a puddle, a hanging rope with a tiny flag, a water bucket, and a wooden sign post, warm daylight, no ducks present, with open space where a training duck and timer UI will be placed. Part two: four round stat icons separated for cropping — a warm pink heart for toughness, a bold teal water drop for move strength, a small wing with motion lines for quickness, and a gentle golden sparkle star for helper spirit. Icons must read clearly at small mobile size.
+
+Size: 1:1 square sheet, target 2048x2048, separated for cropping.
+
+The camp must feel like playful summer camp, not boot camp: no weights, no military style, no whistles, no weapons. No readable text, no numbers, no Robux, no dark theme, no realistic 3D render, no watermark.
+```
+
+### Farm Zone Background - Meadow
+
+Status: `Ready` (Phase 8)
+
+Target use: second farm zone plain background behind the UI.
+
+Suggested save name: `assets/ui/backgrounds/meadow-background-cozy-v1.png`
+
+```text
+cute cozy 2D Roblox duck farming simulator, bright pond farm, soft cartoon shapes, cheerful and readable.
+
+Create a clean 16:9 2D background of a cozy flower meadow zone that belongs to the same farm as the approved pond background: rolling soft green meadow with scattered wildflowers, a small winding brook on the right connecting toward the pond, a wooden stile fence, gentle hills and sky-blue horizon, warm daylight, and open empty areas where UI and ducks will be placed later.
+
+Size: 16:9 landscape, target 1920x1080.
+
+Match the exact rendering style, palette softness, and lighting of the Cozy Pond Farm background so zones feel like one world. This is a background only: no UI, no buttons, no counters, no panels, no cards, no labels, no readable text, no numbers, no menus, no icons, no logo, no ducks, no realistic 3D render, no watermark.
+```
+
+### Farm Zone Background - Orchard
+
+Status: `Ready` (Phase 8)
+
+Target use: third farm zone plain background behind the UI.
+
+Suggested save name: `assets/ui/backgrounds/orchard-background-cozy-v1.png`
+
+```text
+cute cozy 2D Roblox duck farming simulator, bright pond farm, soft cartoon shapes, cheerful and readable.
+
+Create a clean 16:9 2D background of a cozy orchard zone that belongs to the same farm as the approved pond background: a few round friendly apple trees with soft red fruit, dappled warm light on green grass, a small wooden cart, a low stone-and-wood fence, a glimpse of the pond far in the background, and open empty areas where UI and ducks will be placed later.
+
+Size: 16:9 landscape, target 1920x1080.
+
+Match the exact rendering style, palette softness, and lighting of the Cozy Pond Farm background so zones feel like one world. This is a background only: no UI, no buttons, no counters, no panels, no cards, no labels, no readable text, no numbers, no menus, no icons, no logo, no ducks, no realistic 3D render, no watermark.
+```
+
+### Decoration Icon Sheet - Starter Set
+
+Status: `Ready` (Phase 8)
+
+Target use: decoration inventory icons and on-farm decoration art.
+
+Suggested save name: `assets/design/generated/decoration-icons-cozy-v1.png`
+
+```text
+cute cozy 2D Roblox duck farming simulator, bright pond farm, soft cartoon shapes, cheerful and readable.
+
+Create a 2D transparent-background icon sheet of eight farm decorations for a cozy duck farming simulator, separated with clear spacing: 1 lily pad cluster with one pink lotus, 2 round flower bed with tulips, 3 small wooden lantern with a warm soft light, 4 cozy wooden bench, 5 little birdhouse on a post, 6 straw bale with a tiny sunflower, 7 small stone pond fountain with a gentle water arc, 8 short white picket fence piece with climbing flowers.
+
+Size: 1:1 square sheet, target 2048x2048, separated for cropping.
+
+Match the Cozy Pond Farm palette: teal water accents, grass green, duck yellow, warm wood, coral and pastel flowers. No readable text, no Robux, no premium tags, no dark theme, no realistic 3D render, no watermark.
+```
+
+### Photo Frame and Sticker Sheet
+
+Status: `Ready` (Phase 8)
+
+Target use: Photo Mode V0 starter frames and stickers.
+
+Suggested save name: `assets/design/generated/photo-frames-stickers-cozy-v1.png`
+
+```text
+cute cozy 2D Roblox duck farming simulator, soft cartoon shapes, cheerful and readable.
+
+Create a 2D transparent-background sheet with two separated parts. Part one: four photo frame borders for landscape photos, each an empty rectangular border with a transparent center — 1 a soft white instant-photo style frame with a wider bottom edge, 2 a warm wooden frame with small leaf corners, 3 a pastel flower garland frame, 4 a playful frame of tiny duck footprints and eggs along the border. Part two: eight small stickers separated for cropping — a pink heart, a sparkle cluster, a smiling sun, an empty rounded speech bubble, a tiny egg, a rainbow arc, a small crown of leaves, and a music note.
+
+Size: 1:1 square sheet, target 2048x2048, separated for cropping, frame centers fully transparent.
+
+No readable text inside any frame or sticker, no numbers, no Robux, no premium tags, no dark theme, no realistic 3D render, no watermark.
+```
+
+### Mutation Overlay Sheet
+
+Status: `Ready` (Phase 9)
+
+Target use: approve the six mutation overlay looks on the base duck.
+
+Suggested save name: `assets/design/generated/mutation-overlays-cozy-v1.png`
+
+```text
+cute cozy 2D Roblox duck farming simulator, bright pond farm, soft cartoon shapes, cheerful and readable.
+
+one consistent duck body template across all ducks: round plump body, simple small flat bill, two small dot eyes, small wing bump, short tail nub, no neck, stubby orange feet, three-quarter side view facing right, soft cartoon shading, flat clean 2D, strong readable silhouette, same proportions as a cute round rubber-duck toy.
+
+Create a 2D transparent-background sheet of the warm duck-yellow Classic duck shown six times in identical pose with clear spacing, each with one different bold overlay trait that never changes the body shape: 1 sparkle, bright star glints scattered over the back with one larger glint above the wing; 2 marble, a clear swirled two-tone marbling across the wing and back; 3 snowdust, a crisp white dusting cap across head and back; 4 honey, a glossy warm honey patch dripping boldly over the head; 5 tuxedo, a clean high-contrast white chest bib with a deeper back tone; 6 star, one big soft white star marking on the flank.
+
+Size: 1:1 square sheet, target 2048x2048, separated for cropping.
+
+The duck stays clearly the same Classic Yellow duck in all six; only the overlay markings differ. Every marking must remain identifiable when the duck is shrunk to small in-game sprite size, so make each tell bold, clean, and high-contrast rather than faint or delicate. No accessories, no readable text, no large glow auras, no Robux, no realistic feathers, no 3D render, no watermark.
+```
+
+### Breeding Nursery Background
+
+Status: `Ready` (Phase 9)
+
+Target use: plain background behind the breeding/nursery UI.
+
+Suggested save name: `assets/ui/backgrounds/nursery-background-cozy-v1.png`
+
+```text
+cute cozy 2D Roblox duck farming simulator, bright pond farm, soft cartoon shapes, cheerful and readable.
+
+Create a clean 16:9 2D background of a cozy duck nursery corner of the farm: a warm wooden shelter with a soft straw floor, two cushioned nest spots side by side, a small heart-shaped flower wreath on the wall, gentle morning light, pastel blankets, and open empty areas in the center and right where UI panels will be placed later.
+
+Size: 16:9 landscape, target 1920x1080.
+
+This is a background only: no ducks, no eggs, no UI, no buttons, no panels, no cards, no readable text, no numbers, no icons, no logo, no realistic 3D render, no watermark.
+```
+
+### Social UI Mockup (Farm Sign, Leaderboard, Visitor Book)
+
+Status: `Ready` (Phase 10)
+
+Target use: layout reference for likes, leaderboards, and the visitor book.
+
+Suggested save name: `assets/ui/mockups/social-ui-cozy-v1.png`
+
+```text
+cute cozy 2D Roblox duck farming simulator, soft cartoon shapes, clean mobile-friendly UI, white panels, coral action buttons, cheerful and readable.
+
+Create a 2D UI concept sheet for cozy social features in a duck farming simulator, components separated for reference: 1 a cute wooden farm sign with a blank name area, a small heart-like counter chip, and a tiny duck perched on top; 2 a white rounded leaderboard panel with five row slots, each with an avatar circle, blank name bar, and score chip area; 3 a visitor book panel styled like an open soft paper notebook with small avatar circles and blank line areas; 4 a small gift button and gift box chip.
+
+Size: 1:1 square sheet, target 2048x2048.
+
+Leave all text areas blank or placeholder marks. Hearts and likes stay soft and friendly. No readable text, no numbers, no Robux, no premium currency, no dark theme, no realistic 3D render, no watermark.
+```
+
+### Seasonal Event Background - Template
+
+Status: `Ready` (Phase 11, run once per season)
+
+Target use: event-dressed farm background behind the UI during {SEASON} events.
+
+Suggested save name: `assets/ui/backgrounds/event-{season-slug}-background-v1.png`
+
+```text
+cute cozy 2D Roblox duck farming simulator, bright pond farm, soft cartoon shapes, cheerful and readable.
+
+Create a clean 16:9 2D background that is the approved Cozy Pond Farm scene dressed for a {SEASON} festival: keep the same pond on the right, grass on the left, wooden fence, and straw nest area, then add {THEME}. Keep the open empty areas at the top left, top right, bottom center, and right side for UI overlays.
+
+Size: 16:9 landscape, target 1920x1080.
+
+Match the exact rendering style, palette softness, and lighting of the approved farm background so the event feels like the same farm on a special day. This is a background only: no UI, no buttons, no counters, no panels, no cards, no labels, no readable text, no numbers, no menus, no icons, no logo, no ducks, no realistic 3D render, no watermark.
+```
+
+### Event Duck Concept - Template
+
+Status: `Ready` (Phase 11, run once per season)
+
+Target use: limited Festival duck family concept for the {SEASON} event.
+
+Suggested save name: `assets/design/generated/event-duck-{season-slug}-v1.png`
+
+```text
+cute cozy 2D Roblox duck farming simulator, bright pond farm, soft cartoon shapes, cheerful and readable.
+
+one consistent duck body template across all ducks: round plump body, simple small flat bill, two small dot eyes, small wing bump, short tail nub, no neck, stubby orange feet, three-quarter side view facing right, soft cartoon shading, flat clean 2D, strong readable silhouette, same proportions as a cute round rubber-duck toy.
+
+Create a 2D transparent-background concept sheet of one festival duck family for a {SEASON} event, using the same body template as all other ducks, with a palette and small festive markings inspired by {THEME}. Show the duck in separated poses with clear spacing: idle facing right, sleeping, happy, and one larger front-facing portrait bust.
+
+Size: 1:1 square sheet, target 2048x2048, separated for cropping.
+
+Festive markings stay painted on the body, like patterns or color washes, not attached objects. No accessories, no hats, no props, no readable text, no Robux, no realistic feathers, no 3D render, no watermark.
+```
+
+### Minigame Scene Mockup - Bread Toss
+
+Status: `Ready` (Phase 11)
+
+Target use: full-screen minigame scene layout reference.
+
+Suggested save name: `assets/ui/mockups/bread-toss-scene-cozy-v1.png`
+
+```text
+cute cozy 2D Roblox duck farming simulator, bright pond farm, soft cartoon shapes, clean mobile-friendly UI, white panels, coral action buttons, cheerful and readable.
+
+Create a 16:9 UI mockup of a cozy bread toss minigame scene: a wide teal pond filling most of the screen with three cute round yellow ducks swimming at different distances, a small wooden dock ledge at the bottom center where bread pieces are thrown from, a soft dotted arc line showing one throw path, a round timer area at top center, and a score chip area at top right. Keep generous mobile-friendly spacing and large readable shapes.
+
+Size: 16:9 landscape, target 1920x1080.
+
+Leave all text areas blank or placeholder marks. No readable text, no numbers, no Robux, no premium currency, no dark theme, no realistic 3D render, no watermark.
+```
+
+### Minigame Scene Mockup - Lily Hop
+
+Status: `Ready` (Phase 11)
+
+Target use: full-screen minigame scene layout reference.
+
+Suggested save name: `assets/ui/mockups/lily-hop-scene-cozy-v1.png`
+
+```text
+cute cozy 2D Roblox duck farming simulator, bright pond farm, soft cartoon shapes, clean mobile-friendly UI, white panels, coral action buttons, cheerful and readable.
+
+Create a 16:9 UI mockup of a cozy lily pad hopping minigame scene: a calm teal pond seen slightly from above with a winding path of round lily pads crossing the screen, one cute round yellow duck mid-hop between pads with small motion lines, a few pads gently glowing as the next safe step, a round timer area at top center, and a streak chip area at top right. Keep generous mobile-friendly spacing and large readable shapes.
+
+Size: 16:9 landscape, target 1920x1080.
+
+Leave all text areas blank or placeholder marks. The glow stays soft pastel. No readable text, no numbers, no Robux, no premium currency, no dark theme, no realistic 3D render, no watermark.
+```
+
+### Golden Pond Background
+
+Status: `Ready` (Phase 12)
+
+Target use: Legacy farm background variant behind the UI.
+
+Suggested save name: `assets/ui/backgrounds/golden-pond-background-v1.png`
+
+```text
+cute cozy 2D Roblox duck farming simulator, bright pond farm, soft cartoon shapes, cheerful and readable.
+
+Create a clean 16:9 2D background that is the approved Cozy Pond Farm scene with one prestige change: the pond water is a warm shimmering soft gold instead of teal, with gentle golden sparkle motes above the water and a few floating golden lily pads. Everything else stays the same cozy farm: green grass on the left, wooden fence, straw nest area, sky-blue feel, and the same open empty areas for UI overlays.
+
+Size: 16:9 landscape, target 1920x1080.
+
+The gold stays warm, soft, and cozy, never harsh or metallic. This is a background only: no UI, no buttons, no counters, no panels, no cards, no labels, no readable text, no numbers, no menus, no icons, no logo, no ducks, no realistic 3D render, no watermark.
+```
+
+### Accessory Icon Sheet - Concept Only
+
+Status: `Ready for concepts (Monetization Wave 1 is planned in docs/PRODUCT_PLAN.md; final art and import wait for the wave sign-off)`
+
+Target use: cosmetic accessory exploration for Wave 1 (`Cozy Basics` pack: coral bow, knitted scarf, flower clip; Supporter `Sunny Bow`) and later packs. Do not import accessory assets into the game before the wave's one-line sign-off.
+
+Suggested save name: `assets/design/generated/accessory-icons-concept-v1.png`
+
+```text
+cute cozy 2D Roblox duck farming simulator, soft cartoon shapes, cheerful and readable.
+
+Create a 2D transparent-background icon sheet of small cosmetic duck accessories for a cozy duck farming simulator, separated with clear spacing: a tiny coral bow, a soft knitted scarf, a small flower clip, a tiny straw sun hat, a little leaf cap, and a small round pair of reading glasses. Each accessory is drawn alone at the angle it would sit on a round duck head or neck, small enough to never hide the duck's body silhouette.
+
+Size: 1:1 square sheet, target 2048x2048, separated for cropping.
+
+No ducks in this sheet, no readable text, no Robux, no price tags, no premium badges, no rarity glow, no dark theme, no realistic 3D render, no watermark.
+```
+
+## Marketing Asset Prompts
+
+Store presence assets for the full-launch checklist in `docs/PRODUCT_PLAN.md`. Thumbnails carry no baked text; any title or callout text is composited later so it stays editable and translatable.
+
+### Game Icon
+
+Status: `Ready` (before full launch)
+
+Target use: the Roblox experience icon. Must read at very small sizes.
+
+Suggested save name: `assets/design/generated/game-icon-duck-v1.png`
+
+```text
+cute cozy 2D Roblox duck farming simulator, bright pond farm, soft cartoon shapes, cheerful and readable.
+
+Create a 2D game icon: one cute round yellow duck face filling most of the frame, slightly tilted with a happy friendly expression, simple small flat orange bill, two dot eyes, on a soft teal pond-water background with one or two subtle lily pad shapes in the corners. Bold, simple, and readable at thumbnail size with a strong silhouette and high contrast between the yellow duck and teal background.
+
+Size: 1:1 square, target 1024x1024.
+
+No text, no logo, no eggs, no UI, no border, no rarity effects, no Robux, no realistic 3D render, no clutter, no watermark.
+```
+
+### Store Thumbnail Scene Table
+
+Fill `{SCENE}` from this table, one run per scene. Refresh the set at each named update.
+
+| Scene | Scene text |
+| --- | --- |
+| Farm overview | the cozy pond farm in full: pond, grass, fence, nest, and five happy round ducks of different colors wandering and one duck sleeping |
+| Hatching moment | a straw nest incubator center frame with a golden egg mid-hatch, a soft warm glow burst, sparkle motes, and two excited ducks watching from the sides |
+| Family lineup | six round ducks of different color families standing in a proud row on the grass by the pond, like a team photo |
+| Decorated farm | the pond farm dressed with decorations: string lanterns, flower beds, a fountain, a bench, and three ducks enjoying the garden |
+| Friends visiting | two groups of colorful ducks greeting each other by the pond with small heart shapes floating above, a gift box on the grass |
+
+### Store Thumbnail - Template
+
+Status: `Ready` (before full launch, run once per scene)
+
+Target use: Roblox experience thumbnails; five scenes per the scene table.
+
+Suggested save name: `assets/design/generated/thumbnail-{scene-slug}-v1.png`
+
+```text
+cute cozy 2D Roblox duck farming simulator, bright pond farm, soft cartoon shapes, cheerful and readable.
+
+one consistent duck body template across all ducks: round plump body, simple small flat bill, two small dot eyes, small wing bump, short tail nub, no neck, stubby orange feet, soft cartoon shading, flat clean 2D, strong readable silhouette, same proportions as a cute round rubber-duck toy.
+
+Create a 16:9 promotional illustration for a cozy duck farming game showing {SCENE}. Composition: bright, warm, and joyful, with the main subject large and centered-left, generous sky and grass space on the right third for later text compositing, saturated but soft Cozy Pond Farm palette: duck yellow, teal pond water, grass green, sky blue, coral and pastel accents.
+
+Size: 16:9 landscape, target 1920x1080.
+
+No readable text, no logo, no UI, no buttons, no panels, no numbers, no Robux, no rarity glow except soft pastel hatch sparkle where the scene calls for it, no humans, no realistic 3D render, no watermark.
 ```
 
 ## Approved Prompts

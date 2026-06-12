@@ -78,6 +78,7 @@ export type FarmState = {
 	canBuyPillow: boolean,
 	canBuyToy: boolean,
 	canClaimDailyCheckIn: boolean,
+	streakDay: number,
 	canCareForDucks: boolean,
 	renameError: string,
 	renameErrorDuckIndex: number,
@@ -260,6 +261,9 @@ export type DailyCheckInDefinition = {
 	id: string,
 	displayName: string,
 	rewardCoins: number,
+	streakRewards: {number},
+	day7TreatAmount: number,
+	pauseGraceDays: number,
 }
 
 export type OfflineProgressDefinition = {

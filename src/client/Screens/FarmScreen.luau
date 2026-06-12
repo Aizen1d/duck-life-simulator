@@ -5432,15 +5432,25 @@ local function FarmScreen()
 				end
 			elseif kind == RemoteProtocol.notices.dailyCheckInClaimed then
 				local rewardCoins = if typeof(notice.rewardCoins) == "number" then notice.rewardCoins else 0
+				local rewardTreat = if typeof(notice.rewardTreat) == "number" then notice.rewardTreat else 0
+				local streakDay = if typeof(notice.streakDay) == "number" then notice.streakDay else 0
 
 				if rewardCoins > 0 then
+					local dailyText = if streakDay > 0
+						then string.format("Day %d streak! +%d coins", streakDay, rewardCoins)
+						else string.format("Daily +%d coins", rewardCoins)
+
+					if rewardTreat > 0 then
+						dailyText ..= string.format(" + Treat x%d", rewardTreat)
+					end
+
 					feedbackIdRef.current += 1
 					setFeedbackItems(function(items: {FeedbackItem})
 						local nextItems = table.clone(items)
 						table.insert(nextItems, createFeedbackItem(
 							feedbackIdRef.current,
 							"daily",
-							string.format("Daily +%d coins", rewardCoins),
+							dailyText,
 							Theme.colors.coin,
 							0.5,
 							0.18

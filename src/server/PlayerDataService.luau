@@ -34,12 +34,13 @@ export type SavedPlayerData = {
 	quests: {[string]: SavedQuestData},
 	lastDailyClaimDay: number,
 	lastSeenUtc: number,
+	streakDay: number,
 }
 
 local PlayerDataService = {}
 
 local STORE_NAME = "DuckPlayerDataV1"
-local SCHEMA_VERSION = 7
+local SCHEMA_VERSION = 8
 
 local playerStore = DataStoreService:GetDataStore(STORE_NAME)
 
@@ -248,6 +249,7 @@ function PlayerDataService.sanitize(rawData: any): SavedPlayerData?
 		lastDailyClaimDay = readInteger(rawTable.lastDailyClaimDay, 0, 0, nil),
 		-- Forged or future-dated timestamps clamp to now so offline elapsed time can never go negative or inflate.
 		lastSeenUtc = readInteger(rawTable.lastSeenUtc, 0, 0, os.time()),
+		streakDay = readInteger(rawTable.streakDay, 0, 0, 7),
 	}
 end
 

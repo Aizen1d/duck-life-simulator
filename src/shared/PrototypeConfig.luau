@@ -491,6 +491,9 @@ local PrototypeConfig = {
 		id = "daily_check_in",
 		displayName = "Daily Check-in",
 		rewardCoins = 20,
+		streakRewards = { 20, 30, 40, 50, 60, 80, 100 },
+		day7TreatAmount = 1,
+		pauseGraceDays = 3,
 	},
 
 	offlineProgress = {

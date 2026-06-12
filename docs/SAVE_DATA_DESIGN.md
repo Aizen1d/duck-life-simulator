@@ -8,7 +8,7 @@ The goal is to keep the first persistence pass small, server-owned, validated, a
 
 Save Data V0 is implemented in `src/server/PlayerDataService.luau` and integrated through `src/server/PlayerStateService.luau`.
 
-The current playable prototype loads player data on join, autosaves dirty state about `3` seconds after meaningful changes, retries failed autosaves after a longer delay, saves on leave, attempts final saves on shutdown, and includes Studio-only tester controls guarded by `RunService:IsStudio()`. The visible farm-screen save status indicator has been removed; save verification should use Studio Output logs and rejoin checks. The current saved schema is `schemaVersion = 7` because the server-derived `lastSeenUtc` timestamp for Offline Progress V0 now persists alongside Toy inventory, `lastDailyClaimDay`, Duck Feed, Premium Feed, Treat, Pillow, and Quest V0/V1/V2 progress. On load, offline egg production is granted from `lastSeenUtc` at `50%` of the online rate, capped at `2` hours.
+The current playable prototype loads player data on join, autosaves dirty state about `3` seconds after meaningful changes, retries failed autosaves after a longer delay, saves on leave, attempts final saves on shutdown, and includes Studio-only tester controls guarded by `RunService:IsStudio()`. The visible farm-screen save status indicator has been removed; save verification should use Studio Output logs and rejoin checks. The current saved schema is `schemaVersion = 8` because the Daily Streak V1 `streakDay` position now persists alongside the `lastSeenUtc` timestamp for Offline Progress V0, Toy inventory, `lastDailyClaimDay`, Duck Feed, Premium Feed, Treat, Pillow, and Quest V0/V1/V2 progress. On load, offline egg production is granted from `lastSeenUtc` at `50%` of the online rate, capped at `2` hours.
 
 ## Official Roblox References Checked
 
@@ -47,6 +47,7 @@ Save the smallest set of values that make the current prototype feel continuous 
 - quest level/progress for Quest V0/V1/V2 collect, sell, help, use-treats, buy-ducks, and spend-coins quests
 - `lastDailyClaimDay` (integer day-since-epoch for Daily Check-in V0)
 - `lastSeenUtc` (server-derived Unix timestamp written on save, used to grant capped offline egg production on load)
+- `streakDay` (Daily Streak V1 position `0` to `7`; `0` means no streak started yet)
 
 Do not save these in V0:
 
@@ -85,7 +86,7 @@ Object:
 
 ```lua
 {
-	schemaVersion = 6,
+	schemaVersion = 8,
 	coins = 0,
 	eggs = 0,
 	duckFeed = 0,
@@ -132,6 +133,7 @@ Object:
 	},
 	lastDailyClaimDay = 0,
 	lastSeenUtc = 0,
+	streakDay = 0,
 }
 ```
 
@@ -191,6 +193,7 @@ Persistent values must stay server-owned:
 - `toy`: finite integer, minimum `0`
 - `lastDailyClaimDay`: finite integer day-since-epoch, minimum `0`
 - `lastSeenUtc`: finite integer Unix timestamp, minimum `0`, clamped to the current server time on load so forged or future-dated values can never inflate offline progress
+- `streakDay`: finite integer, minimum `0`, maximum `7`
 - `availableEggs`: finite integer, minimum `0`
 - `eggValueLevel`: finite integer, minimum `0`, maximum `PrototypeConfig.firstUpgrade.maxLevel`
 - `nextDuckId`: finite integer, at least one greater than the highest saved duck id
@@ -220,7 +223,8 @@ Every saved object must include `schemaVersion`.
 
 For V0:
 
-- `schemaVersion = 7`
+- `schemaVersion = 8`
+- Existing `schemaVersion = 7` saves load with default `streakDay` at `0`, so the first post-update daily claim starts the streak at day `1`.
 - Existing `schemaVersion = 6` saves load with default `lastSeenUtc` at `0`, granting no offline progress on the first rejoin after the update.
 - Existing `schemaVersion = 5` saves load with default Toy inventory at `0`, default `lastDailyClaimDay` at `0`, and default `buy_ducks`/`spend_coins` quests at level `1`, progress `0`.
 - Existing `schemaVersion = 4` saves load with default Pillow inventory at `0`, default Toy inventory at `0`, default `lastDailyClaimDay` at `0`, and default `use_treats`/`buy_ducks`/`spend_coins` quests at level `1`, progress `0`.
@@ -282,6 +286,7 @@ General rules for every bump: timestamps are server-derived (`os.time`) and neve
 - [x] Persist Pillow inventory and Quest V1 `use_treats` level/progress in schema version `5`.
 - [x] Persist Toy inventory, `lastDailyClaimDay`, and Quest V2 `buy_ducks`/`spend_coins` level/progress in schema version `6`.
 - [x] Persist `lastSeenUtc` and grant capped offline egg production (`50%` rate, `2` hour cap, forged-timestamp clamping) in schema version `7`.
+- [x] Persist the Daily Streak V1 `streakDay` position with escalating rewards and the pause-not-reset rule in schema version `8`.
 
 ## Approved V0 Decisions
 

@@ -66,6 +66,7 @@ type PlayerState = {
 	pendingForcedCareRequestKind: string,
 	visitorHelpEnabled: boolean,
 	lastDailyClaimDay: number,
+	streakDay: number,
 	pendingOfflineEggs: number,
 	pendingOfflineSeconds: number,
 }
@@ -808,6 +809,7 @@ local function createPlayerState(): PlayerState
 		pendingForcedCareRequestKind = "",
 		visitorHelpEnabled = false,
 		lastDailyClaimDay = 0,
+		streakDay = 0,
 		pendingOfflineEggs = 0,
 		pendingOfflineSeconds = 0,
 	}
@@ -874,6 +876,7 @@ local function applySavedData(state: PlayerState, savedData: {[string]: any})
 		[toy.id] = savedData.toy,
 	}
 	state.lastDailyClaimDay = savedData.lastDailyClaimDay or 0
+	state.streakDay = savedData.streakDay or 0
 	state.eggValueLevel = math.clamp(savedData.eggValueLevel, 0, EGG_VALUE_MAX_LEVEL)
 	state.eggSellValue = PrototypeConfig.eggSellValue + state.eggValueLevel * PrototypeConfig.firstUpgrade.valueIncrease
 	state.ducks = {}
@@ -926,7 +929,7 @@ local function serializeSaveData(state: PlayerState)
 	end
 
 	return {
-		schemaVersion = 7,
+		schemaVersion = 8,
 		coins = state.coins,
 		eggs = state.eggs,
 		duckFeed = getDuckFeedCount(state),
@@ -941,6 +944,7 @@ local function serializeSaveData(state: PlayerState)
 		quests = state.quests,
 		lastDailyClaimDay = state.lastDailyClaimDay,
 		lastSeenUtc = os.time(),
+		streakDay = state.streakDay,
 	}
 end
 
@@ -1129,6 +1133,7 @@ local function serializeState(state: PlayerState)
 		canBuyPillow = state.coins >= pillow.cost,
 		canBuyToy = state.coins >= toy.cost,
 		canClaimDailyCheckIn = math.floor(os.time() / 86400) > state.lastDailyClaimDay,
+		streakDay = state.streakDay,
 		canCareForDucks = canCareForDucks,
 		renameError = state.renameError,
 		renameErrorDuckIndex = state.renameErrorDuckIndex,
@@ -1905,6 +1910,7 @@ local function visitorHelpDuck(visitor: Player, payload: any)
 end
 
 local function claimDailyCheckIn(player: Player, state: PlayerState)
+	local checkInConfig = PrototypeConfig.dailyCheckIn
 	local currentDay = math.floor(os.time() / 86400)
 
 	if currentDay <= state.lastDailyClaimDay then
@@ -1915,15 +1921,38 @@ local function claimDailyCheckIn(player: Player, state: PlayerState)
 		return
 	end
 
-	local rewardCoins = PrototypeConfig.dailyCheckIn.rewardCoins
+	-- Cozy streak rule: claiming the next day advances the streak, missing up to
+	-- pauseGraceDays only pauses it in place, and longer absences restart at day 1.
+	local gapDays = currentDay - state.lastDailyClaimDay
+	local nextStreakDay = 1
+
+	if
+		state.streakDay > 0
+		and state.lastDailyClaimDay > 0
+		and gapDays <= 1 + checkInConfig.pauseGraceDays
+	then
+		nextStreakDay = (state.streakDay % 7) + 1
+	end
+
+	local rewardCoins = checkInConfig.streakRewards[nextStreakDay] or checkInConfig.rewardCoins
+	local rewardTreat = if nextStreakDay >= 7 then checkInConfig.day7TreatAmount else 0
+	local duckTreatId = PrototypeConfig.shop.duckTreat.id
 
 	state.coins += rewardCoins
+
+	if rewardTreat > 0 then
+		state.inventory[duckTreatId] = (state.inventory[duckTreatId] or 0) + rewardTreat
+	end
+
 	state.lastDailyClaimDay = currentDay
+	state.streakDay = nextStreakDay
 	markSaveDirty(state)
 
 	sendNotice(player, {
 		kind = RemoteProtocol.notices.dailyCheckInClaimed,
 		rewardCoins = rewardCoins,
+		rewardTreat = rewardTreat,
+		streakDay = nextStreakDay,
 	})
 end
 

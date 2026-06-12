@@ -6,7 +6,7 @@ Use this file for known work that is not finished yet. Keep tasks concrete and a
 
 Roadmap Phase 4 (Retention Foundations and First Art Pass, per `docs/ROADMAP.md`):
 
-- [ ] Implement Offline Progress V0: server-derived last-seen timestamp, `50%` offline production rate, `2` hour accrual cap, `Welcome back!` summary toast, and `schemaVersion = 7` migration recorded in `docs/SAVE_DATA_DESIGN.md` before implementation.
+- [ ] Play-test Offline Progress V0 in Roblox Studio with API services enabled: rejoin after a few minutes away and confirm ready eggs grew at the `50%` rate, the welcome-back toast shows eggs and away-minutes exactly once, no grant appears on a fresh profile or on the first rejoin after the schema `7` update, the grant respects the `2` hour cap, higher-level ducks accrue more, and `lastSeenUtc` persistence is visible through Studio Output logs on stop/rejoin.
 - [ ] Implement Daily Streak V1 on top of Daily Check-in V0: 7-day visible track, escalating rewards (`20/30/40/50/60/80` coins, day 7 `Treat x1` + `100` coins), pause on `1-3` missed days, reset after more than `3`.
 - [ ] Implement Daily Quests V0: `3` rotating UTC-day goals reusing the existing quest framework, small item rewards, and an all-three completion bonus.
 - [ ] Implement Badges V0: first duck bought, first rename, `100` eggs collected, first level `5` duck, 7-day streak.
@@ -99,6 +99,7 @@ Product plan (per `docs/PRODUCT_PLAN.md`):
 - [ ] Play-test the coin counter abbreviation in Roblox Studio, including small coin balances showing the exact number, balances `1000` and above showing `1.0k`-style abbreviations with one decimal, balances `100000` and above showing whole-number `k`, balances `1000000` and above showing `M`-style abbreviations, the shop coin counter using the same abbreviation, and confirming cost text in shop cards and progression cards still shows exact coin amounts.
 
 ## Done
+- [x] Implement Offline Progress V0 with a server-derived `lastSeenUtc` timestamp, `50%` offline production rate, `2` hour accrual cap, welcome-back toast with away-minutes, forged-timestamp clamping, no-grant migration for pre-v7 saves, and Save Data V0 persistence behind `schemaVersion = 7`.
 - [x] Implement Weather/Event V2 with a fourth Stormy weather state that combines mild `Sleepy?` and `Dirty?` request weighting, four-way random weather rolls, a darker farm rain overlay during stormy weather, badge color/text for stormy, and a Studio-only tester that cycles Sunny → Cloudy → Rainy → Stormy → Sunny.
 - [x] Implement Quest V3 with two new repeatable quests: `Win Egg Catch` (+1 per successful Egg Catch reward claim) and `Level up ducks` (+1 per duck level-up from any care or Treat). Both grant milestone `Treat x1` every three completed levels and reuse the existing quest framework.
 - [x] Implement coin counter abbreviation in the farm and shop coin counters, showing `1.2k`-style values above `1000`, whole-number `k` above `100k`, and `M`-style values above `1000000`, while keeping cost text and progression card copy at exact coin counts.

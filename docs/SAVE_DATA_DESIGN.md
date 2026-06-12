@@ -8,7 +8,7 @@ The goal is to keep the first persistence pass small, server-owned, validated, a
 
 Save Data V0 is implemented in `src/server/PlayerDataService.luau` and integrated through `src/server/PlayerStateService.luau`.
 
-The current playable prototype loads player data on join, autosaves dirty state about `3` seconds after meaningful changes, retries failed autosaves after a longer delay, saves on leave, attempts final saves on shutdown, and includes Studio-only tester controls guarded by `RunService:IsStudio()`. The visible farm-screen save status indicator has been removed; save verification should use Studio Output logs and rejoin checks. The current saved schema is `schemaVersion = 6` because Toy inventory and `lastDailyClaimDay` now persist alongside Duck Feed, Premium Feed, Treat, Pillow, and Quest V0/V1/V2 progress.
+The current playable prototype loads player data on join, autosaves dirty state about `3` seconds after meaningful changes, retries failed autosaves after a longer delay, saves on leave, attempts final saves on shutdown, and includes Studio-only tester controls guarded by `RunService:IsStudio()`. The visible farm-screen save status indicator has been removed; save verification should use Studio Output logs and rejoin checks. The current saved schema is `schemaVersion = 7` because the server-derived `lastSeenUtc` timestamp for Offline Progress V0 now persists alongside Toy inventory, `lastDailyClaimDay`, Duck Feed, Premium Feed, Treat, Pillow, and Quest V0/V1/V2 progress. On load, offline egg production is granted from `lastSeenUtc` at `50%` of the online rate, capped at `2` hours.
 
 ## Official Roblox References Checked
 
@@ -46,6 +46,7 @@ Save the smallest set of values that make the current prototype feel continuous 
 - per-duck XP
 - quest level/progress for Quest V0/V1/V2 collect, sell, help, use-treats, buy-ducks, and spend-coins quests
 - `lastDailyClaimDay` (integer day-since-epoch for Daily Check-in V0)
+- `lastSeenUtc` (server-derived Unix timestamp written on save, used to grant capped offline egg production on load)
 
 Do not save these in V0:
 
@@ -130,6 +131,7 @@ Object:
 		},
 	},
 	lastDailyClaimDay = 0,
+	lastSeenUtc = 0,
 }
 ```
 
@@ -188,6 +190,7 @@ Persistent values must stay server-owned:
 - `pillow`: finite integer, minimum `0`
 - `toy`: finite integer, minimum `0`
 - `lastDailyClaimDay`: finite integer day-since-epoch, minimum `0`
+- `lastSeenUtc`: finite integer Unix timestamp, minimum `0`, clamped to the current server time on load so forged or future-dated values can never inflate offline progress
 - `availableEggs`: finite integer, minimum `0`
 - `eggValueLevel`: finite integer, minimum `0`, maximum `PrototypeConfig.firstUpgrade.maxLevel`
 - `nextDuckId`: finite integer, at least one greater than the highest saved duck id
@@ -217,7 +220,8 @@ Every saved object must include `schemaVersion`.
 
 For V0:
 
-- `schemaVersion = 6`
+- `schemaVersion = 7`
+- Existing `schemaVersion = 6` saves load with default `lastSeenUtc` at `0`, granting no offline progress on the first rejoin after the update.
 - Existing `schemaVersion = 5` saves load with default Toy inventory at `0`, default `lastDailyClaimDay` at `0`, and default `buy_ducks`/`spend_coins` quests at level `1`, progress `0`.
 - Existing `schemaVersion = 4` saves load with default Pillow inventory at `0`, default Toy inventory at `0`, default `lastDailyClaimDay` at `0`, and default `use_treats`/`buy_ducks`/`spend_coins` quests at level `1`, progress `0`.
 - Existing `schemaVersion = 3` saves load with default Premium Feed inventory at `0`, default Pillow inventory at `0`, default Toy inventory at `0`, default `lastDailyClaimDay` at `0`, and default `use_treats`/`buy_ducks`/`spend_coins` quests at level `1`, progress `0`.
@@ -231,7 +235,7 @@ For V0:
 
 The approved long-term roadmap (`docs/ROADMAP.md`, 2026-06-11) maps expected schema versions to content phases. These are planning targets, not implemented schemas: before each bump, the exact fields, defaults, validation rules, and migration steps must be recorded in this document, and each phase may merge or split versions if implementation order changes.
 
-- `schemaVersion = 7` (Phase 4): last-seen UTC timestamp for Offline Progress V0, streak count and streak last-claim day, daily quest day stamp and slot states, badge grant flags, settings (music, sfx, reduced motion), and Feature Unlock Ladder flags only where a rung cannot be derived from existing server-owned progress (derive instead of save wherever possible).
+- `schemaVersion = 7` (Phase 4, shipped 2026-06-12): the server-derived `lastSeenUtc` timestamp for Offline Progress V0. The remaining Phase 4 fields (streak state, daily quest day stamp and slots, badge grant flags, settings, and Feature Unlock Ladder flags where a rung cannot be derived from existing progress) land in following bumps as each feature ships, shifting the later planned version numbers up accordingly.
 - `schemaVersion = 8` (Phase 5): per-duck family id and rarity, Duckdex discovered map, collection reward claim flags, starter-choice completion flag, Mystery Duck Box inventory. Existing ducks migrate as `Classic Yellow`.
 - `schemaVersion = 9` (Phase 6): egg inventory by type, incubator slot states with finish timestamps, hatch pity counters.
 - `schemaVersion = 10` (Phase 7): per-duck evolution stage, Star Grain inventory, duck level cap validation raised from `5` to `10`, per-duck daily XP counter and day stamp for the `150` XP/day pacing cap.
@@ -277,6 +281,7 @@ General rules for every bump: timestamps are server-derived (`os.time`) and neve
 - [x] Persist Quest V0 level/progress, Treat inventory, and Premium Feed inventory in schema version `4`.
 - [x] Persist Pillow inventory and Quest V1 `use_treats` level/progress in schema version `5`.
 - [x] Persist Toy inventory, `lastDailyClaimDay`, and Quest V2 `buy_ducks`/`spend_coins` level/progress in schema version `6`.
+- [x] Persist `lastSeenUtc` and grant capped offline egg production (`50%` rate, `2` hour cap, forged-timestamp clamping) in schema version `7`.
 
 ## Approved V0 Decisions
 

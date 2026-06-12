@@ -8,6 +8,7 @@ Use short entries that describe what changed and why. Keep implementation detail
 
 ### Added
 
+- Implemented Offline Progress V0 (2026-06-12), the first Phase 4 retention feature: ducks keep producing at `50%` of the online rate while the player is away, capped at `2` hours, computed server-side from a saved `lastSeenUtc` timestamp that is written from server time and clamped against forged or future-dated values on load. Offline eggs are granted to the nest on load with a one-time welcome-back toast showing eggs and away-minutes. Pre-v7 saves load with `lastSeenUtc = 0` and grant nothing on their first rejoin. Save schema is now `schemaVersion = 7`.
 - Added a local project map dashboard at `docs/project-map/index.html` (2026-06-12) with static HTML/CSS/JS for analyzing Rojo mappings, source modules, runtime remotes, server-owned state, save-data flow, UI screens, high-level gameplay loop, supporting gameplay systems, roadmap direction, and related docs without adding a build step or dependency.
 - Added a left-to-right autoplay gameplay simulator at `docs/project-map/gameplay-flow.html` (2026-06-12) showing the current confirmed farm loop with moving box-component flow for eggs, coins, care, shop items, quests, duck XP, weather, and save-state analysis.
 

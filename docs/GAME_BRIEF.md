@@ -22,7 +22,7 @@ The project should prioritize simple simulator progression before adding complex
 - The first prototype uses temporary UI placeholders until one approved variant is prepared for each needed visual target.
 - The first upgrade is Egg Value.
 - Save Data V0 is implemented for the approved current persistence scope in `docs/SAVE_DATA_DESIGN.md`.
-- The source implementation now includes a server-authoritative session loop for eggs, coins, collecting, selling, the first Egg Value upgrade, Buy Duck progression, Shop V0 Duck Feed, Premium Feed, and Treat inventory, Hungry, Sleepy, and Dirty duck care requests, Guide/Tutorial V0, Weather/Event V0, Quest V0, Minigames V0 with server-backed Egg Catch rewards, Rename V0, Farm Visit V0, and Farm Visit V1 visitor help.
+- The source implementation now includes a server-authoritative session loop for eggs, coins, collecting, selling, the first Egg Value upgrade, Buy Duck progression, Shop V0 Duck Feed, Premium Feed, and Treat inventory, Hungry, Sleepy, and Dirty duck care requests, Guide/Tutorial V0, Weather/Event V0, Quest V0, Minigames V0 with server-backed Egg Catch rewards, Rename V0, Farm Visit V0, Farm Visit V1 visitor help, Daily Check-in V0, and Offline Progress V0 (eggs accrue at `50%` of the online rate while away, capped at `2` hours, granted with a one-time welcome-back toast on rejoin).
 - The client requests named UI actions. It does not send egg counts, coin counts, duck counts, prices, timers, mood values, level or XP values, inventory counts, upgrade levels, quest progress, quest levels, quest targets, or quest rewards. For `Care`, `Give Treat`, and Farm Visit V1 visitor help, the client sends the selected duck index; for shop purchases, the client sends the shop item id; for Rename V0, the client sends the selected duck index and requested name; for Egg Catch, the client starts a server-tracked round and later submits the finished score to claim a server-validated reward; for Farm Visit V0, the client sends a same-server target `UserId` and the server validates that target before switching the viewer's farm view. Farm Visit V1 also lets an owner toggle session-only visitor help. The server validates payloads before changing state.
 - Duck Mood / Care V1 is approved as a feedback-only life-sim layer with real individual duck records. It does not affect egg production or economy balance yet.
 - Visible ducks can be tapped on mobile or left-clicked on PC to open a small local care bubble. Right-click is not required for the main interaction. The server can assign one visible duck to ask for care.
@@ -104,6 +104,8 @@ These values are approved as starter defaults and may be rebalanced later:
 - Duck rename uniqueness: case-insensitive within the player's current duck list
 - Duck rename filtering: server-side Roblox `TextService` filtering; failed or heavily filtered names are rejected
 - Save data: Save Data V0 persists held eggs, ready nest eggs, coins, Duck Feed, Premium Feed, and Treat inventory, Egg Value upgrade level, duck names/profiles, duck level/XP, stable duck IDs, and Quest V0 level/progress
+- Offline progress rate: `50%` of online production while away
+- Offline progress cap: `2` hours of accrual
 - Weather default: `Sunny`
 - Weather cycle interval: `90` seconds
 - Rainy weather chance when weather rolls: `35%`
@@ -121,6 +123,7 @@ The current implementation is intentionally small:
 - The server tracks each player's eggs, coins, available eggs, egg sell value, Egg Value upgrade level, Duck Feed, Premium Feed, and Treat inventory, per-duck generated or renamed names, per-duck level/XP, current session weather, rename validation errors, and internal save status.
 - The server tracks current session weather as `Sunny` or `Rainy`, schedules weather rolls about every `90` seconds, and sends the current weather label, detail text, and next-change countdown to the client.
 - One level `1` duck produces one available egg every `5` seconds.
+- While a player is away, ducks keep producing at `50%` of the online rate for up to `2` hours, computed on the server from the saved last-seen timestamp. Rejoining adds the offline eggs to the nest and shows a one-time welcome-back toast with the egg count and away-minutes.
 - `Collect` moves available eggs into the player's egg count.
 - `Sell` converts held eggs into coins using the server-owned egg value.
 - Quest V0 displays a compact farm-screen quest tracker that can be tapped or clicked to expand into the full collect, sell, and help quest list while still keeping all quest progress server-owned. Expanded rows show coin rewards and the current level's milestone Duck Feed or Treat reward when one will be granted.

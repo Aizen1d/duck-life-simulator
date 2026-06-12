@@ -41,6 +41,7 @@ local RemoteProtocol = {
 		eggCatchReward = "egg_catch_reward",
 		dailyCheckInClaimed = "daily_check_in_claimed",
 		dailyCheckInRejected = "daily_check_in_rejected",
+		offlineProgress = "offline_progress",
 	},
 }
 

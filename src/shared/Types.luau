@@ -262,6 +262,11 @@ export type DailyCheckInDefinition = {
 	rewardCoins: number,
 }
 
+export type OfflineProgressDefinition = {
+	rate: number,
+	capSeconds: number,
+}
+
 export type MinigameRewardDefinition = {
 	coinsPerScoreStep: number,
 	maxCoins: number,
@@ -309,6 +314,7 @@ export type PrototypeConfig = {
 	duckLevel: DuckLevelDefinition,
 	duckRename: DuckRenameDefinition,
 	dailyCheckIn: DailyCheckInDefinition,
+	offlineProgress: OfflineProgressDefinition,
 	minigames: MinigamesDefinition,
 }
 

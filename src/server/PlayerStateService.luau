@@ -66,6 +66,8 @@ type PlayerState = {
 	pendingForcedCareRequestKind: string,
 	visitorHelpEnabled: boolean,
 	lastDailyClaimDay: number,
+	pendingOfflineEggs: number,
+	pendingOfflineSeconds: number,
 }
 
 type SaveEntry = {
@@ -806,6 +808,8 @@ local function createPlayerState(): PlayerState
 		pendingForcedCareRequestKind = "",
 		visitorHelpEnabled = false,
 		lastDailyClaimDay = 0,
+		pendingOfflineEggs = 0,
+		pendingOfflineSeconds = 0,
 	}
 
 	for _ = 1, PrototypeConfig.startingDucks do
@@ -826,6 +830,28 @@ local function createDuckFromSavedData(savedDuck: {[string]: any}, now: number):
 		hasCareRequest = false,
 		careRequestKind = "",
 	}
+end
+
+-- Offline accrual is server-derived only: the saved last-seen timestamp is written from os.time()
+-- on save and clamped to now on load, so the client can never report or inflate away-time.
+local function computeOfflineProduction(state: PlayerState, lastSeenUtc: number): (number, number)
+	local offlineConfig = PrototypeConfig.offlineProgress
+
+	-- Saves from before schema 7 load with lastSeenUtc = 0 and grant nothing on their first rejoin.
+	if lastSeenUtc <= 0 then
+		return 0, 0
+	end
+
+	local elapsedSeconds = math.clamp(os.time() - lastSeenUtc, 0, offlineConfig.capSeconds)
+
+	if elapsedSeconds <= 0 then
+		return 0, 0
+	end
+
+	local cycles = elapsedSeconds / PrototypeConfig.eggProductionIntervalSeconds
+	local producedEggs = math.floor(cycles * getEggProductionPerCycle(state) * offlineConfig.rate)
+
+	return producedEggs, elapsedSeconds
 end
 
 local function applySavedData(state: PlayerState, savedData: {[string]: any})
@@ -865,6 +891,12 @@ local function applySavedData(state: PlayerState, savedData: {[string]: any})
 		addDuck(state)
 	end
 
+	local offlineEggs, offlineSeconds = computeOfflineProduction(state, savedData.lastSeenUtc or 0)
+
+	state.pendingOfflineEggs = offlineEggs
+	state.pendingOfflineSeconds = offlineSeconds
+	state.availableEggs += offlineEggs
+
 	state.nextCareRequestAt = now + PrototypeConfig.duckCare.firstRequestDelaySeconds
 	state.nextEggAt = now + PrototypeConfig.eggProductionIntervalSeconds
 	state.eggProductionCarry = 0
@@ -894,7 +926,7 @@ local function serializeSaveData(state: PlayerState)
 	end
 
 	return {
-		schemaVersion = 6,
+		schemaVersion = 7,
 		coins = state.coins,
 		eggs = state.eggs,
 		duckFeed = getDuckFeedCount(state),
@@ -908,6 +940,7 @@ local function serializeSaveData(state: PlayerState)
 		ducks = ducks,
 		quests = state.quests,
 		lastDailyClaimDay = state.lastDailyClaimDay,
+		lastSeenUtc = os.time(),
 	}
 end
 
@@ -2054,6 +2087,10 @@ local function onPlayerAdded(player: Player)
 		state.saveDirty = false
 		state.isFreshProfile = false
 		setSaveStatus(state, SAVE_STATUS_SAVED)
+
+		if state.pendingOfflineEggs > 0 then
+			markSaveDirty(state)
+		end
 	elseif loadSuccess then
 		markSaveDirty(state)
 		state.isFreshProfile = true
@@ -2073,6 +2110,16 @@ local function onPlayerAdded(player: Player)
 	end
 
 	state.isLoaded = true
+
+	if state.pendingOfflineEggs > 0 then
+		sendNotice(player, {
+			kind = RemoteProtocol.notices.offlineProgress,
+			eggs = state.pendingOfflineEggs,
+			awaySeconds = state.pendingOfflineSeconds,
+		})
+		state.pendingOfflineEggs = 0
+		state.pendingOfflineSeconds = 0
+	end
 
 	local currentDay = math.floor(os.time() / 86400)
 

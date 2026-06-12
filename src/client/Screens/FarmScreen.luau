@@ -5448,6 +5448,31 @@ local function FarmScreen()
 						return nextItems
 					end)
 				end
+			elseif kind == RemoteProtocol.notices.offlineProgress then
+				local offlineEggs = if typeof(notice.eggs) == "number" then notice.eggs else 0
+				local awaySeconds = if typeof(notice.awaySeconds) == "number" then notice.awaySeconds else 0
+
+				if offlineEggs > 0 then
+					local awayMinutes = math.max(1, math.floor(awaySeconds / 60))
+					feedbackIdRef.current += 1
+					setFeedbackItems(function(items: {FeedbackItem})
+						local nextItems = table.clone(items)
+						table.insert(nextItems, createFeedbackItem(
+							feedbackIdRef.current,
+							"offline",
+							string.format(
+								"Welcome back! Your ducks laid %d egg%s while you were away (%dm)",
+								offlineEggs,
+								if offlineEggs == 1 then "" else "s",
+								awayMinutes
+							),
+							Theme.colors.grassDark,
+							0.5,
+							0.24
+						))
+						return nextItems
+					end)
+				end
 			elseif kind == RemoteProtocol.notices.eggCatchReward then
 				local sessionId = if typeof(notice.sessionId) == "number" then notice.sessionId else nil
 				local success = notice.success == true

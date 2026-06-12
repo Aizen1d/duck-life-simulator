@@ -493,6 +493,11 @@ local PrototypeConfig = {
 		rewardCoins = 20,
 	},
 
+	offlineProgress = {
+		rate = 0.5,
+		capSeconds = 7200,
+	},
+
 	minigames = {
 		eggCatch = {
 			id = "egg_catch",

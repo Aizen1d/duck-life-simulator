@@ -271,6 +271,12 @@ export type OfflineProgressDefinition = {
 	capSeconds: number,
 }
 
+export type ComebackGiftDefinition = {
+	awayDaysThreshold: number,
+	duckFeedAmount: number,
+	duckTreatAmount: number,
+}
+
 export type DailyQuestPoolEntry = {
 	id: string,
 	displayName: string,
@@ -336,6 +342,7 @@ export type PrototypeConfig = {
 	duckRename: DuckRenameDefinition,
 	dailyCheckIn: DailyCheckInDefinition,
 	offlineProgress: OfflineProgressDefinition,
+	comebackGift: ComebackGiftDefinition,
 	dailyQuests: DailyQuestsDefinition,
 	minigames: MinigamesDefinition,
 }

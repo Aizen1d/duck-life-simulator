@@ -501,6 +501,12 @@ local PrototypeConfig = {
 		capSeconds = 7200,
 	},
 
+	comebackGift = {
+		awayDaysThreshold = 7,
+		duckFeedAmount = 2,
+		duckTreatAmount = 1,
+	},
+
 	dailyQuests = {
 		questCount = 3,
 		slotOffsets = { 0, 3, 5 },

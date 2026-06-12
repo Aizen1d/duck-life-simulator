@@ -44,6 +44,7 @@ local RemoteProtocol = {
 		offlineProgress = "offline_progress",
 		dailyQuestCompleted = "daily_quest_completed",
 		dailyQuestBonus = "daily_quest_bonus",
+		comebackGift = "comeback_gift",
 	},
 }
 

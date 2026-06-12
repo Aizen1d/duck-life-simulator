@@ -5507,6 +5507,35 @@ local function FarmScreen()
 						return nextItems
 					end)
 				end
+			elseif kind == RemoteProtocol.notices.comebackGift then
+				local giftFeed = if typeof(notice.duckFeed) == "number" then notice.duckFeed else 0
+				local giftTreat = if typeof(notice.duckTreat) == "number" then notice.duckTreat else 0
+
+				if giftFeed > 0 or giftTreat > 0 then
+					local giftParts = {}
+
+					if giftFeed > 0 then
+						table.insert(giftParts, string.format("Feed x%d", giftFeed))
+					end
+
+					if giftTreat > 0 then
+						table.insert(giftParts, string.format("Treat x%d", giftTreat))
+					end
+
+					feedbackIdRef.current += 1
+					setFeedbackItems(function(items: {FeedbackItem})
+						local nextItems = table.clone(items)
+						table.insert(nextItems, createFeedbackItem(
+							feedbackIdRef.current,
+							"comeback",
+							string.format("Your ducks missed you! Gift: %s", table.concat(giftParts, " + ")),
+							Theme.colors.coral,
+							0.5,
+							0.27
+						))
+						return nextItems
+					end)
+				end
 			elseif kind == RemoteProtocol.notices.offlineProgress then
 				local offlineEggs = if typeof(notice.eggs) == "number" then notice.eggs else 0
 				local awaySeconds = if typeof(notice.awaySeconds) == "number" then notice.awaySeconds else 0

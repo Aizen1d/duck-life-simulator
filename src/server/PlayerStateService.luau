@@ -77,6 +77,7 @@ type PlayerState = {
 	pendingOfflineSeconds: number,
 	dailyQuests: DailyQuestsState,
 	pendingNotices: {{[string]: any}},
+	pendingComebackGift: boolean,
 }
 
 type SaveEntry = {
@@ -914,6 +915,7 @@ local function createPlayerState(): PlayerState
 			bonusGranted = false,
 		},
 		pendingNotices = {},
+		pendingComebackGift = false,
 	}
 
 	for _ = 1, PrototypeConfig.startingDucks do
@@ -1006,6 +1008,25 @@ local function applySavedData(state: PlayerState, savedData: {[string]: any})
 	state.pendingOfflineEggs = offlineEggs
 	state.pendingOfflineSeconds = offlineSeconds
 	state.availableEggs += offlineEggs
+
+	-- Comeback Gift V0: long absences are welcomed, never punished, per the cozy promise.
+	-- The away time uses the same server-derived timestamp as offline progress, but uncapped.
+	local comebackConfig = PrototypeConfig.comebackGift
+	local lastSeenUtc = savedData.lastSeenUtc or 0
+
+	if lastSeenUtc > 0 and os.time() - lastSeenUtc >= comebackConfig.awayDaysThreshold * 86400 then
+		local duckFeedId = PrototypeConfig.shop.duckFeed.id
+		local duckTreatId = PrototypeConfig.shop.duckTreat.id
+
+		state.inventory[duckFeedId] = (state.inventory[duckFeedId] or 0) + comebackConfig.duckFeedAmount
+		state.inventory[duckTreatId] = (state.inventory[duckTreatId] or 0) + comebackConfig.duckTreatAmount
+		state.pendingComebackGift = true
+		queueNotice(state, {
+			kind = RemoteProtocol.notices.comebackGift,
+			duckFeed = comebackConfig.duckFeedAmount,
+			duckTreat = comebackConfig.duckTreatAmount,
+		})
+	end
 
 	state.nextCareRequestAt = now + PrototypeConfig.duckCare.firstRequestDelaySeconds
 	state.nextEggAt = now + PrototypeConfig.eggProductionIntervalSeconds
@@ -2280,8 +2301,9 @@ local function onPlayerAdded(player: Player)
 		state.isFreshProfile = false
 		setSaveStatus(state, SAVE_STATUS_SAVED)
 
-		if state.pendingOfflineEggs > 0 then
+		if state.pendingOfflineEggs > 0 or state.pendingComebackGift then
 			markSaveDirty(state)
+			state.pendingComebackGift = false
 		end
 	elseif loadSuccess then
 		markSaveDirty(state)

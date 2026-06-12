@@ -78,6 +78,7 @@ type PlayerState = {
 	dailyQuests: DailyQuestsState,
 	pendingNotices: {{[string]: any}},
 	pendingComebackGift: boolean,
+	clientReady: boolean,
 }
 
 type SaveEntry = {
@@ -916,6 +917,7 @@ local function createPlayerState(): PlayerState
 		},
 		pendingNotices = {},
 		pendingComebackGift = false,
+		clientReady = false,
 	}
 
 	for _ = 1, PrototypeConfig.startingDucks do
@@ -1353,7 +1355,9 @@ local function serializeStateForViewer(viewer: Player, homeState: PlayerState)
 end
 
 local function sendState(player: Player, state: PlayerState)
-	if #state.pendingNotices > 0 then
+	-- Join-time notices (streak claim, offline eggs, comeback gift) queue until the client
+	-- proves its listener is connected by sending any action, otherwise they fire into the void.
+	if state.clientReady and #state.pendingNotices > 0 then
 		for _, noticePayload in state.pendingNotices do
 			noticeEvent:FireClient(player, noticePayload)
 		end
@@ -2098,7 +2102,7 @@ local function claimDailyCheckIn(player: Player, state: PlayerState)
 	local currentDay = math.floor(os.time() / 86400)
 
 	if currentDay <= state.lastDailyClaimDay then
-		sendNotice(player, {
+		queueNotice(state, {
 			kind = RemoteProtocol.notices.dailyCheckInRejected,
 			message = "Daily already claimed",
 		})
@@ -2132,7 +2136,7 @@ local function claimDailyCheckIn(player: Player, state: PlayerState)
 	state.streakDay = nextStreakDay
 	markSaveDirty(state)
 
-	sendNotice(player, {
+	queueNotice(state, {
 		kind = RemoteProtocol.notices.dailyCheckInClaimed,
 		rewardCoins = rewardCoins,
 		rewardTreat = rewardTreat,
@@ -2200,6 +2204,8 @@ local function onAction(player: Player, actionName: any, payload: any?)
 	if not state or typeof(actionName) ~= "string" or not validActions[actionName] then
 		return
 	end
+
+	state.clientReady = true
 
 	if actionName == RemoteProtocol.actions.requestState then
 		sendState(player, state)
@@ -2326,7 +2332,7 @@ local function onPlayerAdded(player: Player)
 	state.isLoaded = true
 
 	if state.pendingOfflineEggs > 0 then
-		sendNotice(player, {
+		queueNotice(state, {
 			kind = RemoteProtocol.notices.offlineProgress,
 			eggs = state.pendingOfflineEggs,
 			awaySeconds = state.pendingOfflineSeconds,

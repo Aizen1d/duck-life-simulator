@@ -1145,8 +1145,12 @@ local function createQuestPanel(farmState: FarmState, layout: LayoutMetrics, isE
 	local progress = math.clamp(quest.progress / math.max(1, quest.target), 0, 1)
 	local width = if layout.isShortLandscape then 150 elseif layout.isCompact then 168 else 190
 	local rowHeight = if layout.isShortLandscape then 24 else 32
+	-- The expanded list caps at a few visible rows and scrolls, so dailies plus the growing
+	-- repeatable quest set never turn the panel into a full-screen wall.
+	local visibleRowCount = math.min(#farmState.quests, if layout.isShortLandscape then 4 else 6)
+	local headerHeight = if layout.isShortLandscape then 18 else 24
 	local height = if isExpanded
-		then (if layout.isShortLandscape then 18 else 24) + rowHeight * #farmState.quests + 8
+		then headerHeight + rowHeight * visibleRowCount + 8
 		else (if layout.isShortLandscape then 42 else 50)
 	local weatherHeight = if layout.isShortLandscape then 28 else 34
 	local weatherOffset = if layout.isShortLandscape then 54 else 42
@@ -1183,15 +1187,19 @@ local function createQuestPanel(farmState: FarmState, layout: LayoutMetrics, isE
 	}
 
 	if isExpanded then
+		local rowChildren = {}
+
 		for index, expandedQuest in farmState.quests do
 			local expandedProgress = math.clamp(expandedQuest.progress / math.max(1, expandedQuest.target), 0, 1)
-			local rowY = (if layout.isShortLandscape then 18 else 24) + (index - 1) * rowHeight
+			local rowY = (index - 1) * rowHeight
 			local rewardWidth = if layout.isShortLandscape then 58 else 78
+			-- Daily slots have no quest level, so their rows show the goal name alone.
+			local isDailyQuest = string.sub(expandedQuest.id, 1, 10) == "daily_slot"
 
-			children["Quest" .. tostring(index)] = e("Frame", {
+			rowChildren["Quest" .. tostring(index)] = e("Frame", {
 				BackgroundTransparency = 1,
-				Position = UDim2.fromOffset(10, rowY),
-				Size = UDim2.new(1, -20, 0, rowHeight),
+				Position = UDim2.fromOffset(0, rowY),
+				Size = UDim2.new(1, -6, 0, rowHeight),
 				ZIndex = Theme.zIndex.ui + 2,
 			}, {
 				Label = e("TextLabel", {
@@ -1199,7 +1207,9 @@ local function createQuestPanel(farmState: FarmState, layout: LayoutMetrics, isE
 					Font = Enum.Font.GothamBold,
 					Position = UDim2.fromOffset(0, 0),
 					Size = UDim2.new(1, -rewardWidth - 2, 0, if layout.isShortLandscape then 10 else 13),
-					Text = string.format("%s %d", expandedQuest.displayName, expandedQuest.level),
+					Text = if isDailyQuest
+						then expandedQuest.displayName
+						else string.format("%s %d", expandedQuest.displayName, expandedQuest.level),
 					TextColor3 = Theme.colors.text,
 					TextSize = if layout.isShortLandscape then 9 else 11,
 					TextTruncate = Enum.TextTruncate.AtEnd,
@@ -1253,6 +1263,18 @@ local function createQuestPanel(farmState: FarmState, layout: LayoutMetrics, isE
 				}),
 			})
 		end
+
+		children.Rows = e("ScrollingFrame", {
+			Active = true,
+			BackgroundTransparency = 1,
+			BorderSizePixel = 0,
+			CanvasSize = UDim2.fromOffset(0, rowHeight * #farmState.quests),
+			Position = UDim2.fromOffset(10, headerHeight),
+			ScrollBarThickness = 3,
+			ScrollingDirection = Enum.ScrollingDirection.Y,
+			Size = UDim2.new(1, -20, 0, rowHeight * visibleRowCount),
+			ZIndex = Theme.zIndex.ui + 2,
+		}, rowChildren)
 	else
 		children.Summary = e("TextLabel", {
 			BackgroundTransparency = 1,

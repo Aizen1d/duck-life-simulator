@@ -179,6 +179,10 @@ Use short entries that describe what changed and why. Keep implementation detail
 
 ### Fixed
 
+- Fixed join-time toasts (streak claim, offline eggs, comeback gift) firing before the client notice listener connects and being lost: all join-time notices now queue on server state and flush only after the client proves it is ready by sending any action. Found during owner play-testing when the streak toast never appeared.
+- Capped the expanded quest panel at `6` visible rows (`4` on short landscape) with a scrolling list, after dailies plus the repeatable quest set grew it into an eleven-row wall that covered the farm scene.
+- Fixed daily quest rows showing a meaningless quest level (`Daily: Collect... 1`); daily slots now display the goal name alone.
+
 - Fixed Farm Visit V1 panel layout so the owner-side `Visitor Help` toggle reserves visible space below the same-server farm rows instead of clipping under the row cards.
 - Fixed Farm Visit V0 polished `View` rows so each visible row has a direct top-level hit target above the regular farm buttons, with row and `View` badge clicks routed to the same visit action.
 - Fixed Farm Visit V0 Studio multiplayer visits so same-server test players with nonzero negative Studio `UserId` values can be visited while still requiring a live same-server target player.

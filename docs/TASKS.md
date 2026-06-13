@@ -29,7 +29,44 @@ Roadmap Phase 4 (Retention Foundations and First Art Pass, per `docs/ROADMAP.md`
 Test method note: the `[x]` server-logic items above (and Egg Value V1 below) were verified on 2026-06-12 via the Roblox Studio MCP — a headless logic pass (`38` checks against the live Rojo-synced `PrototypeConfig`) plus two live Play-mode runs that exercised the real `PlayerStateService` through DataStore round-trips and client-driven action remotes, with API services enabled. The remaining `[ ]` visual items need Play-mode observation (`screen_capture` is edit-time only, so toast/card rendering is unconfirmed even though the data behind them is); the Welcome Back card and 2-player Farm Visit tests also remain. Known floating-point edge recorded above (`1007` vs `1008` offline eggs).
 - [ ] Generate and review the Phase 4 prompt batch: `Badge and Achievement Icon Sheet` and `Daily Streak Calendar UI Mockup`.
 - [ ] Generate and review the `Duck Family Lineup Sheet` so all seven family palettes can be approved in one image before Phase 5 work starts.
-- [ ] Run the Phase 5 design pass before implementation: Duckdex data model, family-aware Buy Duck pricing, rarity bonus wiring, migration of existing saved ducks as `Classic Yellow`, the Starter Choice Duck flow (including existing-profile first-load behavior), and the Mystery Duck Box odds display and pick UI.
+- [x] Run the Phase 5 design pass before implementation (2026-06-13): all decisions recorded below; `Duck Family Lineup Sheet` art is still pending owner generation but does not block the data-layer or server-logic tasks.
+
+  **Family roster (schemaVersion = 11):**
+  | ID | Display Name | Rarity | Egg bonus | Buy Duck cost |
+  |---|---|---|---|---|
+  | `classic_yellow` | Classic Yellow | Common | +0% | 25 coins (existing) |
+  | `mallard_green` | Mallard Green | Common | +0% | 40 coins |
+  | `choco_brown` | Choco Brown | Uncommon | +5% | 90 coins |
+  | `snowy_white` | Snowy White | Uncommon | +5% | 90 coins |
+  | `blossom_pink` | Blossom Pink | Rare | +10% | hatch-only (Phase 6) |
+  | `twilight_blue` | Twilight Blue | Epic | +20% | hatch-only (Phase 6) |
+  | `golden` | Golden | Legendary | +35% | hatch-only (Phase 6) |
+
+  **Rarity egg-production bonus:** additive per duck on top of the level bonus — `duckOutput × (1 + level_bonus + rarity_bonus)`. Common `+0%`, Uncommon `+5%`, Rare `+10%`, Epic `+20%`, Legendary `+35%`.
+
+  **Buy Duck V1:** the progression card becomes a family selector. Phase 5 shows four purchasable families (Classic Yellow, Mallard Green, Choco Brown, Snowy White) as scroll-able cards with coin cost. Rare and above show a `Hatch-only` label hinting at Phase 6; they are visible in the panel but not purchasable.
+
+  **Duckdex access:** no new persistent farm button (UI surface budget is full at 6). Duckdex is a tab or link inside the Buy Duck / progression panel. First-time open shows a one-line tooltip. Collection percentage is out of 6 Phase-5-obtainable families; Golden is shown as a locked silhouette card that does not count toward the percentage.
+
+  **Collection rewards (Duckdex milestones):**
+  - 25% (2 of 6 families owned): +30 coins
+  - 50% (3 of 6): +50 coins + Mystery Duck Box ×1
+  - 75% (5 of 6): +100 coins + Treat ×2
+  - 100% (all 6): +200 coins + Treat ×3 (exclusive decoration deferred to Phase 8 decoration system)
+
+  **Starter Choice Duck:** a modal overlay triggered by a server notice. Fresh profiles: notice fires after the `quests` guide step completes (the last guide step). Existing profiles loading post-Phase 5 for the first time: notice fires on load because `starterChoiceCompleted = false` and `isFreshProfile = false`. Three fixed options: Mallard Green, Choco Brown, Snowy White — no dismiss without choosing. Picking grants the duck with a random name and saves `starterChoiceCompleted = true`. A new `families` guide step fires immediately after, explaining families and pointing to the Duckdex (same info-step pattern as `streak` and `quests`, full-dim overlay, Got it!).
+
+  **Mystery Duck Box:** inventory item (`mysteryDuckBoxes` count). Opening sends `open_mystery_duck_box` to server; server generates 3 rarity-weighted candidates (`60/30/10` Uncommon/Rare/Epic for V0), stores them in server state, and sends a `mystery_duck_box_opened` notice to the client. Client shows pick UI; player sends `pick_duck_box_candidate { candidateIndex = 1/2/3 }`. Server validates index, grants the duck, decrements box count, clears pending candidates. Within Uncommon the family is 50/50 between Choco Brown and Snowy White; Rare = Blossom Pink; Epic = Twilight Blue.
+
+  **Migration:** existing saved ducks load with `family = "classic_yellow"` and `rarity = "common"` as defaults when those fields are absent from the save.
+
+  **Schema 11 additions:**
+  - Per-duck: `family` (string, defaults `"classic_yellow"`), `rarity` (string, defaults `"common"`)
+  - Global: `collectionRewardsClaimed` (array of string milestone IDs, defaults `{}`), `starterChoiceCompleted` (bool, defaults `false`), `mysteryDuckBoxes` (integer, defaults `0`)
+
+- [x] Implement Phase 5 data layer (2026-06-13): extended `DuckState` with `family`/`rarity`; extended `FarmState` with `collectionRewardsClaimed`, `starterChoiceCompleted`, `mysteryDuckBoxes`, `pendingDuckBoxCandidates`; added `DuckBoxCandidate`, `DuckFamilyDefinition`, `CollectionRewardDefinition`, `MysteryDuckBoxDefinition` types; extended `PrototypeConfig` type with `families`, `collectionRewards`, `mysteryDuckBox`, `starterChoiceFamilies`; populated `PrototypeConfig.luau` with the full 7-family table, 4 collection-reward milestones, mystery box `60/30/10` odds, and 3 starter-choice families; documented schema `11` shape and validation rules in `SAVE_DATA_DESIGN.md`.
+- [x] Implement Phase 5 server logic (2026-06-13): bumped schema to `11`; `family` and `rarity` saved/loaded per duck with `"classic_yellow"`/`"common"` migration defaults; `collectionRewardsClaimed`, `starterChoiceCompleted`, `mysteryDuckBoxes` saved and loaded; `getDuckEggProductionMultiplier` now adds the rarity `eggBonus` from `PrototypeConfig.families` on top of the level bonus; `pending_starter_choice` notice queued on every load where `starterChoiceCompleted = false` (fresh and existing profiles); auto-check `checkCollectionMilestones` runs after duck grant and on load; implemented `open_mystery_duck_box` (generates 3 rarity-weighted candidates, stores in `pendingDuckBoxCandidates`, fires `mystery_duck_box_opened` notice), `pick_duck_box_candidate` (validates index, grants duck, clears candidates, fires `duck_box_candidate_picked`), `pick_starter_choice` (validates against `starterChoiceFamilies`, grants duck, sets `starterChoiceCompleted = true`), and `claim_collection_reward` (idempotent milestone recheck). New actions and notices wired in `RemoteProtocol.luau`.
+- [x] Implement Phase 5 client UI V0 (2026-06-13): added `families` info guide step (last in the tutorial sequence, same `Got it!` pattern as `streak` and `quests`); `createStarterChoiceOverlay` — full-screen dim backdrop, centered panel with 3 family cards (name + rarity color badge + `Choose` button), no dismiss, fires `pick_starter_choice` action; `createMysteryDuckBoxPickPanel` — same structure with rarity-colored card borders, `Pick!` button fires `pick_duck_box_candidate`; Starter Choice overlay rendered when `starterChoiceOpen && !tutorialVisible && !starterChoiceCompleted`; Duck Box panel rendered when `farmState.pendingDuckBoxCandidates` is non-empty (server-authoritative state); notice handlers for `pending_starter_choice` (sets `starterChoiceOpen = true`), `collection_reward_granted` (floating toast), and `duck_box_candidate_picked` (floating toast with duck name and rarity); default farm state extended with `collectionRewardsClaimed`, `starterChoiceCompleted`, `mysteryDuckBoxes`, `pendingDuckBoxCandidates`, and `family`/`rarity` on the default duck. Buy Duck V1 family-selector and Duckdex tab deferred to Phase 5 polish pass (existing Buy Duck panel still functional for classic_yellow).
 - [ ] Run the Phase 7B Pond Games design pass before implementation: server battle resolver rules, `Heart`/`Splash`/`Pace`/`Spirit` class stat curves derived from level/rarity/stage, the `16`-skill V0 set with effects and unlock levels, Pond Tour difficulty and reward sizing that keeps battles optional, Training Camp stasis rules (no eggs, care, treats, battles, or breeding while away; offline accrual exclusion; full-refund cancel), battle XP inside the Phase 7 daily cap, and a play-test confirming losing feels fine for a young player.
 - [ ] Tune the Phase 7 daily duck XP cap (`150`/day starter) against real care-request pacing during the Phase 7 design pass, and verify the capped-duck message and blocked Treat use read as cozy, not punishing.
 

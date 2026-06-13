@@ -20,6 +20,8 @@ type DuckState = {
 	lastCareAt: number,
 	hasCareRequest: boolean,
 	careRequestKind: string,
+	family: string,
+	rarity: string,
 }
 
 type QuestState = {
@@ -81,6 +83,10 @@ type PlayerState = {
 	pendingComebackGift: boolean,
 	clientReady: boolean,
 	unlockLadder: boolean,
+	collectionRewardsClaimed: {string},
+	starterChoiceCompleted: boolean,
+	mysteryDuckBoxes: number,
+	pendingDuckBoxCandidates: {{family: string, rarity: string, displayName: string}}?,
 }
 
 type SaveEntry = {
@@ -335,7 +341,7 @@ local function generateDuckName(state: PlayerState): string
 	return fallbackName
 end
 
-local function addDuck(state: PlayerState)
+local function addDuck(state: PlayerState, family: string?, rarity: string?)
 	local now = os.clock()
 
 	table.insert(state.ducks, {
@@ -347,6 +353,8 @@ local function addDuck(state: PlayerState)
 		lastCareAt = now - PrototypeConfig.duckCare.cooldownSeconds,
 		hasCareRequest = false,
 		careRequestKind = "",
+		family = family or "classic_yellow",
+		rarity = rarity or "common",
 	})
 	state.nextDuckId += 1
 end
@@ -392,8 +400,17 @@ end
 
 local function getDuckEggProductionMultiplier(duck: DuckState): number
 	local levelOffset = math.max(0, duck.level - PrototypeConfig.duckLevel.startingLevel)
+	local levelBonus = levelOffset * PrototypeConfig.duckLevel.eggProductionBonusPerLevel
+	local rarityBonus = 0
 
-	return 1 + levelOffset * PrototypeConfig.duckLevel.eggProductionBonusPerLevel
+	for _, family in PrototypeConfig.families do
+		if family.id == duck.family then
+			rarityBonus = family.eggBonus
+			break
+		end
+	end
+
+	return 1 + levelBonus + rarityBonus
 end
 
 local function getEggProductionPerCycle(state: PlayerState): number
@@ -984,6 +1001,10 @@ local function createPlayerState(): PlayerState
 		pendingComebackGift = false,
 		clientReady = false,
 		unlockLadder = true,
+		collectionRewardsClaimed = {},
+		starterChoiceCompleted = false,
+		mysteryDuckBoxes = 0,
+		pendingDuckBoxCandidates = nil,
 	}
 
 	for _ = 1, PrototypeConfig.startingDucks do
@@ -1003,6 +1024,8 @@ local function createDuckFromSavedData(savedDuck: {[string]: any}, now: number):
 		lastCareAt = now - PrototypeConfig.duckCare.cooldownSeconds,
 		hasCareRequest = false,
 		careRequestKind = "",
+		family = if typeof(savedDuck.family) == "string" and savedDuck.family ~= "" then savedDuck.family else "classic_yellow",
+		rarity = if typeof(savedDuck.rarity) == "string" and savedDuck.rarity ~= "" then savedDuck.rarity else "common",
 	}
 end
 
@@ -1055,6 +1078,10 @@ local function applySavedData(state: PlayerState, savedData: {[string]: any})
 		bonusGranted = false,
 	}
 	state.unlockLadder = savedData.unlockLadder == true
+	state.collectionRewardsClaimed = if typeof(savedData.collectionRewardsClaimed) == "table" then savedData.collectionRewardsClaimed else {}
+	state.starterChoiceCompleted = savedData.starterChoiceCompleted == true
+	state.mysteryDuckBoxes = math.max(0, math.floor(typeof(savedData.mysteryDuckBoxes) == "number" and savedData.mysteryDuckBoxes or 0))
+	state.pendingDuckBoxCandidates = nil
 	state.eggValueLevel = math.clamp(savedData.eggValueLevel, 0, EGG_VALUE_MAX_LEVEL)
 	state.eggSellValue = PrototypeConfig.eggSellValue + state.eggValueLevel * PrototypeConfig.firstUpgrade.valueIncrease
 	state.ducks = {}
@@ -1122,11 +1149,13 @@ local function serializeSaveData(state: PlayerState)
 			name = duck.name,
 			level = duck.level,
 			xp = duck.xp,
+			family = duck.family,
+			rarity = duck.rarity,
 		})
 	end
 
 	return {
-		schemaVersion = 10,
+		schemaVersion = 11,
 		coins = state.coins,
 		eggs = state.eggs,
 		duckFeed = getDuckFeedCount(state),
@@ -1144,6 +1173,9 @@ local function serializeSaveData(state: PlayerState)
 		streakDay = state.streakDay,
 		dailyQuests = state.dailyQuests,
 		unlockLadder = state.unlockLadder,
+		collectionRewardsClaimed = state.collectionRewardsClaimed,
+		starterChoiceCompleted = state.starterChoiceCompleted,
+		mysteryDuckBoxes = state.mysteryDuckBoxes,
 	}
 end
 
@@ -1273,6 +1305,8 @@ local function serializeDuck(duck: DuckState, index: number, now: number)
 		careRequestKind = requestKind,
 		careRequestText = if duck.hasCareRequest then requestDefinition.requestText else "",
 		canCare = careCooldownSeconds <= 0,
+		family = duck.family,
+		rarity = duck.rarity,
 	}
 end
 
@@ -1380,6 +1414,10 @@ local function serializeState(state: PlayerState)
 		secondsUntilWeatherChange = math.max(0, math.ceil(state.nextWeatherAt - now)),
 		isFreshProfile = state.isFreshProfile,
 		quests = serializeAllQuests(state),
+		collectionRewardsClaimed = state.collectionRewardsClaimed,
+		starterChoiceCompleted = state.starterChoiceCompleted,
+		mysteryDuckBoxes = state.mysteryDuckBoxes,
+		pendingDuckBoxCandidates = state.pendingDuckBoxCandidates,
 	}
 end
 
@@ -2169,6 +2207,212 @@ local function visitorHelpDuck(visitor: Player, payload: any)
 	sendFarmStateToViewers(owner, ownerState)
 end
 
+-- Auto-grants any collection milestone rewards the player newly qualifies for.
+-- Idempotent: already-claimed IDs in state.collectionRewardsClaimed are skipped.
+local function checkCollectionMilestones(state: PlayerState)
+	local ownedFamilies: {[string]: boolean} = {}
+
+	for _, duck in state.ducks do
+		if duck.family ~= "golden" then
+			ownedFamilies[duck.family] = true
+		end
+	end
+
+	local ownedCount = 0
+
+	for _ in ownedFamilies do
+		ownedCount += 1
+	end
+
+	for _, reward in PrototypeConfig.collectionRewards do
+		if ownedCount < reward.familiesRequired then
+			continue
+		end
+
+		local alreadyClaimed = false
+
+		for _, claimedId in state.collectionRewardsClaimed do
+			if claimedId == reward.id then
+				alreadyClaimed = true
+				break
+			end
+		end
+
+		if alreadyClaimed then
+			continue
+		end
+
+		table.insert(state.collectionRewardsClaimed, reward.id)
+		state.coins += reward.rewardCoins
+
+		if reward.rewardTreat > 0 then
+			local duckTreatId = PrototypeConfig.shop.duckTreat.id
+			state.inventory[duckTreatId] = (state.inventory[duckTreatId] or 0) + reward.rewardTreat
+		end
+
+		if reward.rewardMysteryBox > 0 then
+			state.mysteryDuckBoxes += reward.rewardMysteryBox
+		end
+
+		queueNotice(state, {
+			kind = RemoteProtocol.notices.collectionRewardGranted,
+			rewardId = reward.id,
+			rewardCoins = reward.rewardCoins,
+			rewardTreat = reward.rewardTreat,
+			rewardMysteryBox = reward.rewardMysteryBox,
+		})
+
+		markSaveDirty(state)
+	end
+end
+
+local function grantDuckWithFamily(state: PlayerState, family: string, rarity: string)
+	addDuck(state, family, rarity)
+	checkCollectionMilestones(state)
+	markSaveDirty(state)
+end
+
+local function pickMysteryBoxRarity(): string
+	local config = PrototypeConfig.mysteryDuckBox
+	local roll = math.random(1, 100)
+
+	if roll <= config.epicChance then
+		return "epic"
+	elseif roll <= config.epicChance + config.rareChance then
+		return "rare"
+	end
+
+	return "uncommon"
+end
+
+local function pickFamilyForRarity(rarity: string): string
+	if rarity == "epic" then
+		return "twilight_blue"
+	elseif rarity == "rare" then
+		return "blossom_pink"
+	end
+
+	return if math.random(1, 2) == 1 then "choco_brown" else "snowy_white"
+end
+
+local function openMysteryDuckBox(player: Player, state: PlayerState)
+	if state.mysteryDuckBoxes <= 0 or state.pendingDuckBoxCandidates ~= nil then
+		return
+	end
+
+	state.mysteryDuckBoxes -= 1
+	markSaveDirty(state)
+
+	local candidates: {{family: string, rarity: string, displayName: string}} = {}
+
+	for _ = 1, 3 do
+		local rarity = pickMysteryBoxRarity()
+		local familyId = pickFamilyForRarity(rarity)
+		local displayName = familyId
+
+		for _, familyDef in PrototypeConfig.families do
+			if familyDef.id == familyId then
+				displayName = familyDef.displayName
+				break
+			end
+		end
+
+		table.insert(candidates, { family = familyId, rarity = rarity, displayName = displayName })
+	end
+
+	state.pendingDuckBoxCandidates = candidates
+
+	sendNotice(player, {
+		kind = RemoteProtocol.notices.mysteryDuckBoxOpened,
+		candidates = candidates,
+	})
+end
+
+local function pickDuckBoxCandidate(player: Player, state: PlayerState, payload: any)
+	local candidates = state.pendingDuckBoxCandidates
+
+	if not candidates then
+		return
+	end
+
+	local candidateIndex: number? = nil
+
+	if typeof(payload) == "table" then
+		local pt = payload :: {[string]: any}
+
+		if typeof(pt.candidateIndex) == "number" then
+			candidateIndex = pt.candidateIndex
+		end
+	end
+
+	if
+		not candidateIndex
+		or not isFiniteNumber(candidateIndex)
+		or candidateIndex % 1 ~= 0
+		or candidateIndex < 1
+		or candidateIndex > #candidates
+	then
+		return
+	end
+
+	local chosen = candidates[candidateIndex]
+
+	state.pendingDuckBoxCandidates = nil
+	grantDuckWithFamily(state, chosen.family, chosen.rarity)
+
+	queueNotice(state, {
+		kind = RemoteProtocol.notices.duckBoxCandidatePicked,
+		family = chosen.family,
+		rarity = chosen.rarity,
+		displayName = chosen.displayName,
+	})
+end
+
+local function pickStarterChoice(player: Player, state: PlayerState, payload: any)
+	if state.starterChoiceCompleted then
+		return
+	end
+
+	local familyId: string? = nil
+
+	if typeof(payload) == "table" then
+		local pt = payload :: {[string]: any}
+
+		if typeof(pt.familyId) == "string" then
+			familyId = pt.familyId
+		end
+	end
+
+	if not familyId then
+		return
+	end
+
+	local isValidChoice = false
+
+	for _, allowedFamily in PrototypeConfig.starterChoiceFamilies do
+		if allowedFamily == familyId then
+			isValidChoice = true
+			break
+		end
+	end
+
+	if not isValidChoice then
+		return
+	end
+
+	local rarity = "common"
+
+	for _, familyDef in PrototypeConfig.families do
+		if familyDef.id == familyId then
+			rarity = familyDef.rarity
+			break
+		end
+	end
+
+	state.starterChoiceCompleted = true
+	grantDuckWithFamily(state, familyId, rarity)
+end
+
 local function claimDailyCheckIn(player: Player, state: PlayerState)
 	local checkInConfig = PrototypeConfig.dailyCheckIn
 	local currentDay = math.floor(os.time() / 86400)
@@ -2394,6 +2638,14 @@ local function onAction(player: Player, actionName: any, payload: any?)
 		if state.streakDay == 7 then
 			tryAwardBadge(player, badgeConfig.streak7)
 		end
+	elseif actionName == RemoteProtocol.actions.openMysteryDuckBox then
+		openMysteryDuckBox(player, state)
+	elseif actionName == RemoteProtocol.actions.pickDuckBoxCandidate then
+		pickDuckBoxCandidate(player, state, payload)
+	elseif actionName == RemoteProtocol.actions.pickStarterChoice then
+		pickStarterChoice(player, state, payload)
+	elseif actionName == RemoteProtocol.actions.claimCollectionReward then
+		checkCollectionMilestones(state)
 	end
 
 	sendState(player, state)
@@ -2466,6 +2718,19 @@ local function onPlayerAdded(player: Player)
 			tryAwardBadge(player, PrototypeConfig.badges.streak7)
 		end
 	end
+
+	-- Queue Starter Choice for any profile that hasn't chosen yet (fresh or post-Phase-5 migration).
+	-- Fresh profiles receive this notice and the client shows it after guide completion.
+	-- Existing profiles show it immediately on receipt.
+	if not state.starterChoiceCompleted then
+		queueNotice(state, {
+			kind = RemoteProtocol.notices.pendingStarterChoice,
+			options = PrototypeConfig.starterChoiceFamilies,
+		})
+	end
+
+	-- Auto-grant any collection milestones already met (e.g. after migration fills in family data).
+	checkCollectionMilestones(state)
 
 	sendState(player, state)
 end

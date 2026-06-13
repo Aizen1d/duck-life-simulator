@@ -284,6 +284,11 @@ local TUTORIAL_STEPS: {TutorialStep} = {
 		title = "Daily Quests",
 		body = "Three new goals appear every day at the top of your quest list. Collect eggs, sell for coins, help ducks — complete all three for a daily bonus chest!",
 	},
+	{
+		id = "families",
+		title = "Duck Families",
+		body = "Different duck families lay more eggs! Open the Buy Duck panel to browse families. Check your Duckdex collection to earn milestone rewards.",
+	},
 }
 local DUCK_SLOTS = {
 	{ -24, -18, 1 },
@@ -1147,6 +1152,300 @@ local function formatQuestCompleteFeedback(quest: QuestState): string
 end
 
 -- Centered modal overlay for music, sound, and reduced-motion settings.
+local function createStarterChoiceOverlay(
+	layout: LayoutMetrics,
+	starterFamilies: {string},
+	onPick: (familyId: string) -> ()
+)
+	local black = Color3.new(0, 0, 0)
+	local uiBase = Theme.zIndex.ui
+	local panelWidth = if layout.isShortLandscape then 420 elseif layout.isCompact then 460 else 500
+	local padX = 20
+	local padY = 16
+	local titleH = if layout.isShortLandscape then 20 else 24
+	local bodyH = if layout.isShortLandscape then 28 else 32
+	local cardW = math.floor((panelWidth - padX * 2 - 8 * 2) / 3)
+	local cardH = if layout.isShortLandscape then 80 else 96
+	local btnH = if layout.isShortLandscape then 26 else 30
+	local panelH = padY + titleH + 8 + bodyH + 12 + cardH + padY
+
+	local cardElements = {}
+
+	for i, familyId in starterFamilies do
+		local familyDef = nil
+
+		for _, f in PrototypeConfig.families do
+			if f.id == familyId then
+				familyDef = f
+				break
+			end
+		end
+
+		local displayName = if familyDef then familyDef.displayName else familyId
+		local rarity = if familyDef then familyDef.rarity else "common"
+		local rarityColor = if rarity == "uncommon" then Color3.fromRGB(80, 160, 80)
+			elseif rarity == "rare" then Color3.fromRGB(70, 130, 210)
+			else Theme.colors.mutedText
+		local rarityLabel = (rarity:sub(1, 1)):upper() .. rarity:sub(2)
+
+		cardElements["Card" .. i] = e("Frame", {
+			AnchorPoint = Vector2.new(0, 0),
+			BackgroundColor3 = Color3.fromRGB(248, 245, 238),
+			BorderSizePixel = 0,
+			Position = UDim2.fromOffset((i - 1) * (cardW + 8), 0),
+			Size = UDim2.fromOffset(cardW, cardH),
+			ZIndex = uiBase + 32,
+		}, {
+			Corner = e("UICorner", { CornerRadius = Theme.corner }),
+			Stroke = e("UIStroke", { Color = Theme.colors.panel, Thickness = 1, Transparency = 0.5 }),
+			Name = e("TextLabel", {
+				AnchorPoint = Vector2.new(0.5, 0),
+				BackgroundTransparency = 1,
+				Font = Enum.Font.GothamBold,
+				Position = UDim2.new(0.5, 0, 0, 8),
+				Size = UDim2.new(1, -8, 0, if layout.isShortLandscape then 16 else 18),
+				Text = displayName,
+				TextColor3 = Theme.colors.text,
+				TextSize = if layout.isShortLandscape then 10 else 11,
+				TextXAlignment = Enum.TextXAlignment.Center,
+				ZIndex = uiBase + 32,
+			}),
+			RarityBadge = e("TextLabel", {
+				AnchorPoint = Vector2.new(0.5, 0),
+				BackgroundColor3 = rarityColor,
+				BackgroundTransparency = 0.2,
+				Font = Enum.Font.Gotham,
+				Position = UDim2.new(0.5, 0, 0, if layout.isShortLandscape then 26 else 30),
+				Size = UDim2.new(0.8, 0, 0, if layout.isShortLandscape then 14 else 16),
+				Text = rarityLabel,
+				TextColor3 = Color3.new(1, 1, 1),
+				TextSize = if layout.isShortLandscape then 9 else 10,
+				TextXAlignment = Enum.TextXAlignment.Center,
+				ZIndex = uiBase + 32,
+			}, {
+				Corner = e("UICorner", { CornerRadius = UDim.new(1, 0) }),
+			}),
+			ChooseBtn = e("TextButton", {
+				AnchorPoint = Vector2.new(0.5, 1),
+				AutoButtonColor = true,
+				BackgroundColor3 = Theme.colors.coral,
+				BorderSizePixel = 0,
+				Font = Enum.Font.GothamBold,
+				Position = UDim2.new(0.5, 0, 1, -8),
+				Size = UDim2.new(0.8, 0, 0, btnH),
+				Text = "Choose",
+				TextColor3 = Color3.new(1, 1, 1),
+				TextSize = if layout.isShortLandscape then 10 else 11,
+				ZIndex = uiBase + 32,
+				[React.Event.Activated] = function()
+					onPick(familyId)
+				end,
+			}, {
+				Corner = e("UICorner", { CornerRadius = Theme.corner }),
+			}),
+		})
+	end
+
+	return e("Frame", {
+		Active = true,
+		BackgroundTransparency = 1,
+		Size = UDim2.fromScale(1, 1),
+		ZIndex = uiBase + 30,
+	}, {
+		Backdrop = e("Frame", {
+			BackgroundColor3 = black,
+			BackgroundTransparency = 0.4,
+			Size = UDim2.fromScale(1, 1),
+			ZIndex = uiBase + 30,
+		}),
+		Panel = e("Frame", {
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			BackgroundColor3 = Color3.new(1, 1, 1),
+			BorderSizePixel = 0,
+			Position = UDim2.fromScale(0.5, 0.5),
+			Size = UDim2.fromOffset(panelWidth, panelH),
+			ZIndex = uiBase + 31,
+		}, {
+			Corner = e("UICorner", { CornerRadius = Theme.corner }),
+			Stroke = e("UIStroke", { Color = Theme.colors.panel, Thickness = 1, Transparency = 0.3 }),
+			Title = e("TextLabel", {
+				AnchorPoint = Vector2.new(0.5, 0),
+				BackgroundTransparency = 1,
+				Font = Enum.Font.GothamBold,
+				Position = UDim2.new(0.5, 0, 0, padY),
+				Size = UDim2.new(1, -padX * 2, 0, titleH),
+				Text = "Choose your starter duck",
+				TextColor3 = Theme.colors.text,
+				TextSize = if layout.isShortLandscape then 13 else 15,
+				TextXAlignment = Enum.TextXAlignment.Center,
+				ZIndex = uiBase + 31,
+			}),
+			Body = e("TextLabel", {
+				AnchorPoint = Vector2.new(0.5, 0),
+				BackgroundTransparency = 1,
+				Font = Enum.Font.Gotham,
+				Position = UDim2.new(0.5, 0, 0, padY + titleH + 8),
+				Size = UDim2.new(1, -padX * 2, 0, bodyH),
+				Text = "Pick one to join your farm. More families unlock as you play!",
+				TextColor3 = Theme.colors.mutedText,
+				TextSize = if layout.isShortLandscape then 10 else 11,
+				TextWrapped = true,
+				TextXAlignment = Enum.TextXAlignment.Center,
+				ZIndex = uiBase + 31,
+			}),
+			Cards = e("Frame", {
+				AnchorPoint = Vector2.new(0.5, 0),
+				BackgroundTransparency = 1,
+				Position = UDim2.new(0.5, 0, 0, padY + titleH + 8 + bodyH + 12),
+				Size = UDim2.fromOffset(panelWidth - padX * 2, cardH),
+				ZIndex = uiBase + 31,
+			}, cardElements),
+		}),
+	})
+end
+
+local function createMysteryDuckBoxPickPanel(
+	layout: LayoutMetrics,
+	candidates: {{family: string, rarity: string, displayName: string}},
+	onPick: (candidateIndex: number) -> ()
+)
+	local black = Color3.new(0, 0, 0)
+	local uiBase = Theme.zIndex.ui
+	local panelWidth = if layout.isShortLandscape then 380 elseif layout.isCompact then 420 else 460
+	local padX = 20
+	local padY = 16
+	local titleH = if layout.isShortLandscape then 20 else 24
+	local bodyH = if layout.isShortLandscape then 20 else 22
+	local cardW = math.floor((panelWidth - padX * 2 - 8 * 2) / 3)
+	local cardH = if layout.isShortLandscape then 80 else 96
+	local btnH = if layout.isShortLandscape then 26 else 30
+	local panelH = padY + titleH + 6 + bodyH + 10 + cardH + padY
+
+	local cardElements = {}
+
+	for i, candidate in candidates do
+		local rarity = candidate.rarity
+		local rarityColor = if rarity == "epic" then Color3.fromRGB(150, 80, 210)
+			elseif rarity == "rare" then Color3.fromRGB(70, 130, 210)
+			elseif rarity == "uncommon" then Color3.fromRGB(80, 160, 80)
+			else Theme.colors.mutedText
+		local rarityLabel = (rarity:sub(1, 1)):upper() .. rarity:sub(2)
+
+		cardElements["Candidate" .. i] = e("Frame", {
+			AnchorPoint = Vector2.new(0, 0),
+			BackgroundColor3 = Color3.fromRGB(248, 245, 238),
+			BorderSizePixel = 0,
+			Position = UDim2.fromOffset((i - 1) * (cardW + 8), 0),
+			Size = UDim2.fromOffset(cardW, cardH),
+			ZIndex = uiBase + 32,
+		}, {
+			Corner = e("UICorner", { CornerRadius = Theme.corner }),
+			Stroke = e("UIStroke", { Color = rarityColor, Thickness = 2, Transparency = 0.4 }),
+			Name = e("TextLabel", {
+				AnchorPoint = Vector2.new(0.5, 0),
+				BackgroundTransparency = 1,
+				Font = Enum.Font.GothamBold,
+				Position = UDim2.new(0.5, 0, 0, 8),
+				Size = UDim2.new(1, -8, 0, if layout.isShortLandscape then 16 else 18),
+				Text = candidate.displayName,
+				TextColor3 = Theme.colors.text,
+				TextSize = if layout.isShortLandscape then 10 else 11,
+				TextXAlignment = Enum.TextXAlignment.Center,
+				ZIndex = uiBase + 32,
+			}),
+			RarityBadge = e("TextLabel", {
+				AnchorPoint = Vector2.new(0.5, 0),
+				BackgroundColor3 = rarityColor,
+				BackgroundTransparency = 0.2,
+				Font = Enum.Font.Gotham,
+				Position = UDim2.new(0.5, 0, 0, if layout.isShortLandscape then 26 else 30),
+				Size = UDim2.new(0.8, 0, 0, if layout.isShortLandscape then 14 else 16),
+				Text = rarityLabel,
+				TextColor3 = Color3.new(1, 1, 1),
+				TextSize = if layout.isShortLandscape then 9 else 10,
+				TextXAlignment = Enum.TextXAlignment.Center,
+				ZIndex = uiBase + 32,
+			}, {
+				Corner = e("UICorner", { CornerRadius = UDim.new(1, 0) }),
+			}),
+			PickBtn = e("TextButton", {
+				AnchorPoint = Vector2.new(0.5, 1),
+				AutoButtonColor = true,
+				BackgroundColor3 = Theme.colors.coral,
+				BorderSizePixel = 0,
+				Font = Enum.Font.GothamBold,
+				Position = UDim2.new(0.5, 0, 1, -8),
+				Size = UDim2.new(0.8, 0, 0, btnH),
+				Text = "Pick!",
+				TextColor3 = Color3.new(1, 1, 1),
+				TextSize = if layout.isShortLandscape then 10 else 11,
+				ZIndex = uiBase + 32,
+				[React.Event.Activated] = function()
+					onPick(i)
+				end,
+			}, {
+				Corner = e("UICorner", { CornerRadius = Theme.corner }),
+			}),
+		})
+	end
+
+	return e("Frame", {
+		Active = true,
+		BackgroundTransparency = 1,
+		Size = UDim2.fromScale(1, 1),
+		ZIndex = uiBase + 30,
+	}, {
+		Backdrop = e("Frame", {
+			BackgroundColor3 = black,
+			BackgroundTransparency = 0.4,
+			Size = UDim2.fromScale(1, 1),
+			ZIndex = uiBase + 30,
+		}),
+		Panel = e("Frame", {
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			BackgroundColor3 = Color3.new(1, 1, 1),
+			BorderSizePixel = 0,
+			Position = UDim2.fromScale(0.5, 0.5),
+			Size = UDim2.fromOffset(panelWidth, panelH),
+			ZIndex = uiBase + 31,
+		}, {
+			Corner = e("UICorner", { CornerRadius = Theme.corner }),
+			Stroke = e("UIStroke", { Color = Theme.colors.panel, Thickness = 1, Transparency = 0.3 }),
+			Title = e("TextLabel", {
+				AnchorPoint = Vector2.new(0.5, 0),
+				BackgroundTransparency = 1,
+				Font = Enum.Font.GothamBold,
+				Position = UDim2.new(0.5, 0, 0, padY),
+				Size = UDim2.new(1, -padX * 2, 0, titleH),
+				Text = "Mystery Duck Box!",
+				TextColor3 = Theme.colors.text,
+				TextSize = if layout.isShortLandscape then 13 else 15,
+				TextXAlignment = Enum.TextXAlignment.Center,
+				ZIndex = uiBase + 31,
+			}),
+			Body = e("TextLabel", {
+				AnchorPoint = Vector2.new(0.5, 0),
+				BackgroundTransparency = 1,
+				Font = Enum.Font.Gotham,
+				Position = UDim2.new(0.5, 0, 0, padY + titleH + 6),
+				Size = UDim2.new(1, -padX * 2, 0, bodyH),
+				Text = "Pick one duck to keep!",
+				TextColor3 = Theme.colors.mutedText,
+				TextSize = if layout.isShortLandscape then 10 else 11,
+				TextXAlignment = Enum.TextXAlignment.Center,
+				ZIndex = uiBase + 31,
+			}),
+			Cards = e("Frame", {
+				AnchorPoint = Vector2.new(0.5, 0),
+				BackgroundTransparency = 1,
+				Position = UDim2.new(0.5, 0, 0, padY + titleH + 6 + bodyH + 10),
+				Size = UDim2.fromOffset(panelWidth - padX * 2, cardH),
+				ZIndex = uiBase + 31,
+			}, cardElements),
+		}),
+	})
+end
+
 local function createSettingsPanel(
 	layout: LayoutMetrics,
 	musicEnabled: boolean,
@@ -2888,6 +3187,8 @@ local function createDefaultFarmState()
 				careRequestKind = "",
 				careRequestText = "",
 				canCare = true,
+				family = "classic_yellow",
+				rarity = "common",
 			},
 		},
 		eggSellValue = PrototypeConfig.eggSellValue,
@@ -2940,6 +3241,10 @@ local function createDefaultFarmState()
 		farmOwnerName = "",
 		farmOwnerDisplayName = "",
 		farmVisits = {},
+		collectionRewardsClaimed = {},
+		starterChoiceCompleted = false,
+		mysteryDuckBoxes = 0,
+		pendingDuckBoxCandidates = nil,
 	}
 end
 
@@ -4318,12 +4623,12 @@ local function createTutorialOverlay(
 			then "Open Shop to continue."
 		elseif buyDuckNeedsCoins
 			then "Use Collect and Sell until Buy Duck is ready."
-		elseif step.id == "streak" or step.id == "quests"
+		elseif step.id == "streak" or step.id == "quests" or step.id == "families"
 			then ""
 		elseif step.id == "care" and farmState.careRequestDuckIndex <= 0
 			then "Wait for one duck to ask for help."
 			else "Complete the highlighted task to continue."
-	local isInfoStep = step.id == "streak" or step.id == "quests"
+	local isInfoStep = step.id == "streak" or step.id == "quests" or step.id == "families"
 	local function createTutorialDim(position: UDim2, size: UDim2)
 		local commonProps = {
 			BackgroundColor3 = Color3.fromRGB(39, 47, 44),
@@ -5421,6 +5726,7 @@ local function FarmScreen()
 	local musicEnabled, setMusicEnabled = React.useState(true)
 	local soundEnabled, setSoundEnabled = React.useState(true)
 	local reducedMotion, setReducedMotion = React.useState(false)
+	local starterChoiceOpen, setStarterChoiceOpen = React.useState(false)
 	local previousStateRef = React.useRef(nil :: FarmState?)
 	local feedbackIdRef = React.useRef(0)
 	local scenePointerHandlerRef = React.useRef(nil :: ((Vector2, number?) -> ())?)
@@ -5443,6 +5749,7 @@ local function FarmScreen()
 			or activeTutorialStepId == stepId
 			or activeTutorialStepId == "streak"
 			or activeTutorialStepId == "quests"
+			or activeTutorialStepId == "families"
 	end
 	local function isTutorialCareDuckAllowed(duckIndex: number?): boolean
 		if activeTutorialStepId ~= "care" or duckIndex == nil then
@@ -6072,6 +6379,60 @@ local function FarmScreen()
 						return nextItems
 					end)
 				end
+			elseif kind == RemoteProtocol.notices.pendingStarterChoice then
+				setStarterChoiceOpen(true)
+			elseif kind == RemoteProtocol.notices.collectionRewardGranted then
+				local rewardCoins = if typeof(notice.rewardCoins) == "number" then notice.rewardCoins else 0
+				local rewardTreat = if typeof(notice.rewardTreat) == "number" then notice.rewardTreat else 0
+				local rewardMysteryBox = if typeof(notice.rewardMysteryBox) == "number" then notice.rewardMysteryBox else 0
+				local parts = {}
+
+				if rewardCoins > 0 then
+					table.insert(parts, string.format("+%d coins", rewardCoins))
+				end
+
+				if rewardTreat > 0 then
+					table.insert(parts, string.format("Treat x%d", rewardTreat))
+				end
+
+				if rewardMysteryBox > 0 then
+					table.insert(parts, string.format("Mystery Box x%d", rewardMysteryBox))
+				end
+
+				if #parts > 0 then
+					feedbackIdRef.current += 1
+					setFeedbackItems(function(items: {FeedbackItem})
+						local nextItems = table.clone(items)
+						table.insert(nextItems, createFeedbackItem(
+							feedbackIdRef.current,
+							"collection",
+							string.format("Duckdex reward! %s", table.concat(parts, " + ")),
+							Theme.colors.coral,
+							0.5,
+							0.21
+						))
+						return nextItems
+					end)
+				end
+			elseif kind == RemoteProtocol.notices.duckBoxCandidatePicked then
+				local displayName = if typeof(notice.displayName) == "string" then notice.displayName else "Duck"
+				local rarity = if typeof(notice.rarity) == "string" then notice.rarity else ""
+				local toastText = if rarity ~= "" and rarity ~= "common"
+					then string.format("Got %s! (%s)", displayName, (rarity:sub(1, 1)):upper() .. rarity:sub(2))
+					else string.format("Got %s!", displayName)
+				feedbackIdRef.current += 1
+				setFeedbackItems(function(items: {FeedbackItem})
+					local nextItems = table.clone(items)
+					table.insert(nextItems, createFeedbackItem(
+						feedbackIdRef.current,
+						"duck_box",
+						toastText,
+						Theme.colors.duck,
+						0.5,
+						0.21
+					))
+					return nextItems
+				end)
 			elseif kind == RemoteProtocol.notices.eggCatchReward then
 				local sessionId = if typeof(notice.sessionId) == "number" then notice.sessionId else nil
 				local success = notice.success == true
@@ -6727,6 +7088,38 @@ local function FarmScreen()
 			function() setReducedMotion(function(v) return not v end) end
 		)
 		else nil
+
+	-- Starter Choice: shown when server has sent the notice and the guide is not active
+	-- (fresh profiles see it after the guide finishes; existing profiles see it immediately).
+	local showStarterChoice = starterChoiceOpen
+		and not isViewingOtherFarm
+		and not farmState.starterChoiceCompleted
+		and not tutorialVisible
+
+	children.StarterChoiceOverlay = if showStarterChoice
+		then createStarterChoiceOverlay(
+			layout,
+			PrototypeConfig.starterChoiceFamilies,
+			function(familyId: string)
+				setStarterChoiceOpen(false)
+				actionEvent:FireServer(RemoteProtocol.actions.pickStarterChoice, { familyId = familyId })
+			end
+		)
+		else nil
+
+	-- Mystery Duck Box pick panel: driven directly by server state (pendingDuckBoxCandidates).
+	local duckBoxCandidates = farmState.pendingDuckBoxCandidates
+
+	children.DuckBoxPickPanel = if duckBoxCandidates ~= nil and #duckBoxCandidates > 0 and not isViewingOtherFarm
+		then createMysteryDuckBoxPickPanel(
+			layout,
+			duckBoxCandidates,
+			function(candidateIndex: number)
+				actionEvent:FireServer(RemoteProtocol.actions.pickDuckBoxCandidate, { candidateIndex = candidateIndex })
+			end
+		)
+		else nil
+
 	children.Feedback = createFeedbackLayer(feedbackItems, animationTime)
 	children.FadeOverlay = createFadeOverlay(transitionAlpha)
 

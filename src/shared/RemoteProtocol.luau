@@ -34,6 +34,10 @@ local RemoteProtocol = {
 		testToggleWeather = "test_toggle_weather",
 		testReset = "test_reset",
 		claimDailyCheckIn = "claim_daily_check_in",
+		openMysteryDuckBox = "open_mystery_duck_box",
+		pickDuckBoxCandidate = "pick_duck_box_candidate",
+		pickStarterChoice = "pick_starter_choice",
+		claimCollectionReward = "claim_collection_reward",
 	},
 
 	notices = {
@@ -45,6 +49,10 @@ local RemoteProtocol = {
 		dailyQuestCompleted = "daily_quest_completed",
 		dailyQuestBonus = "daily_quest_bonus",
 		comebackGift = "comeback_gift",
+		mysteryDuckBoxOpened = "mystery_duck_box_opened",
+		duckBoxCandidatePicked = "duck_box_candidate_picked",
+		pendingStarterChoice = "pending_starter_choice",
+		collectionRewardGranted = "collection_reward_granted",
 	},
 }
 

@@ -102,6 +102,20 @@ Save Data V0 is implemented in `src/server/PlayerDataService.luau` and integrate
 Persistence code must live on the server, validate all loaded fields, and serialize only server-owned state. Client code must never submit a full save object or authoritative coins, eggs, duck counts, upgrades, inventory, duck names, level, XP, quest progress, quest levels, timers, or cooldowns.
 
 Use one related player-data object per player for Save Data V0 unless the design changes. Do not add OrderedDataStores, global name reservations, trading, leaderboards, or cross-server systems without a separate approved design.
+
+## Analytics
+
+`AnalyticsService` V0 lives in `src/server/AnalyticsService.luau` and wraps the Roblox built-in `AnalyticsService`. Every call is `task.spawn` + `pcall` guarded and gated by a kill-switch flag, so analytics can never interrupt gameplay and can be silenced instantly with `AnalyticsService.setEnabled(false)`. Analytics is fire-and-forget instrumentation only; it must never change gameplay state, ordering, or save data beyond the one-time `funnelMilestones` dedup flags.
+
+Event names use a fixed prefix convention, decided once here:
+
+- `funnel_*` — one-time onboarding/progression milestones (custom events). Current V0: `funnel_first_collect`, `funnel_first_sell`, `funnel_first_buy_duck`, `funnel_first_care`, `funnel_first_shop_purchase`, `funnel_first_minigame`. Future-phase moments (first hatch, first evolution, first breeding, first like, first Legacy) follow the same `funnel_first_*` form.
+- `econ_source_*` — coins entering the economy (`LogEconomyEvent`, Source flow). Current V0 categories: `egg_sale`, `quest_reward`, `daily_quest_reward`, `daily_quest_bonus`, `daily_checkin`, `minigame_egg_catch`, `collection_reward`.
+- `econ_sink_*` — coins leaving the economy (`LogEconomyEvent`, Sink flow). Current V0 categories: `egg_value_upgrade`, `duck_purchase`, `shop_<itemId>`.
+- `social_*` — one-time social milestones (custom events). Current V0: `social_first_visit`.
+
+Server gameplay functions that mutate coins without a `Player` handle queue analytics events on `state.pendingAnalytics`; `sendState` flushes the queue with the owning player. First-moment events fire once per profile lifetime, deduped by the persisted `funnelMilestones` set, so returning players never re-enter the funnel. Add new economy flows by instrumenting them at the coin-mutation site (every source and sink, to keep the source/sink ratio review honest) and reuse an existing category prefix where one fits.
+
 ## Player-Entered Text
 
 Duck Rename V0 treats submitted duck names as player-generated text. The client may send a requested name, but the server must validate ownership, `2` to `16` character length, and case-insensitive uniqueness within the player's current duck list. The server must run Roblox text filtering through `TextService:FilterStringAsync()` and return the filtered result with `TextFilterResult:GetNonChatStringForUserAsync()` before replicating the display name back to that player. If filtering fails or the filtered result is empty or heavily filtered, do not display or store the submitted name.

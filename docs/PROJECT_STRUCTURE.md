@@ -96,6 +96,7 @@ Current files:
 - `GameServer.luau`
 - `PlayerStateService.luau`
 - `PlayerDataService.luau`
+- `AnalyticsService.luau`
 
 ### `src/shared`
 

@@ -75,7 +75,8 @@ Test method note: the `[x]` server-logic items above (and Egg Value V1 below) we
 
 Product plan (per `docs/PRODUCT_PLAN.md`):
 
-- [ ] Add `AnalyticsService` custom funnel and economy events during Phase 4 work, and record the event naming convention (`funnel_*`, `econ_source_*`, `econ_sink_*`, `social_*`) in `docs/CODING_STANDARDS.md`.
+- [x] Add `AnalyticsService` custom funnel and economy events during Phase 4 work, and record the event naming convention (`funnel_*`, `econ_source_*`, `econ_sink_*`, `social_*`) in `docs/CODING_STANDARDS.md` (2026-06-13): new server module `src/server/AnalyticsService.luau` wraps the Roblox built-in `AnalyticsService`, fully pcall/kill-switch guarded; economy source/sink events fire at every coin-mutation site and one-time `funnel_*`/`social_*` milestones fire once per profile lifetime (deduped by a persisted `funnelMilestones` set, `schemaVersion = 12`); events defer through `state.pendingAnalytics` and flush in `sendState`. Naming convention and current event list recorded in `CODING_STANDARDS.md`; schema 12 documented in `SAVE_DATA_DESIGN.md`.
+- [ ] `AnalyticsService` V0 — verify in Roblox Studio with Game Analytics enabled (Play-mode): confirm `econ_source_*`/`econ_sink_*` events appear with correct amounts and ending balances and the `funnel_*`/`social_*` first-moment events each fire exactly once per profile (and never re-fire after rejoin), using the Studio MCP or the Analytics dashboard. Future-phase funnel moments (first hatch/evolution/breeding/like/Legacy) are added as those systems ship.
 - [ ] Enable Roblox automatic text translation before soft launch and confirm player-facing strings live in code, not images.
 - [ ] Complete the experience content maturity questionnaire before soft launch, targeting an all-ages rating.
 - [ ] Dry-run both recovery paths before full launch: restoring a player save from DataStore version history, and rolling back to a previous published place version.

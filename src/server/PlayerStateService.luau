@@ -10,6 +10,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local PrototypeConfig = require(Shared:WaitForChild("PrototypeConfig"))
 local RemoteProtocol = require(Shared:WaitForChild("RemoteProtocol"))
 local PlayerDataService = require(script.Parent:WaitForChild("PlayerDataService"))
+local AnalyticsService = require(script.Parent:WaitForChild("AnalyticsService"))
 
 type DuckState = {
 	id: number,
@@ -87,6 +88,8 @@ type PlayerState = {
 	starterChoiceCompleted: boolean,
 	mysteryDuckBoxes: number,
 	pendingDuckBoxCandidates: {{family: string, rarity: string, displayName: string}}?,
+	pendingAnalytics: {{[string]: any}},
+	funnelMilestones: {[string]: boolean},
 }
 
 type SaveEntry = {
@@ -267,6 +270,44 @@ local function markSaveDirty(state: PlayerState)
 	if state.saveStatus ~= SAVE_STATUS_LOADING and state.saveStatus ~= SAVE_STATUS_SAVING then
 		setSaveStatus(state, SAVE_STATUS_PENDING)
 	end
+end
+
+-- Analytics events queue on the state and flush in sendState, which holds the Player object
+-- the Roblox AnalyticsService requires. This mirrors the pendingNotices deferral used by the
+-- reward paths that run without a Player (daily quests, collection milestones, offline grants).
+local function queueEconomyEvent(
+	state: PlayerState,
+	flow: string,
+	amount: number,
+	transactionType: string,
+	category: string
+)
+	if amount <= 0 then
+		return
+	end
+
+	-- The coin balance is already mutated by the time this is called, so it is the ending balance.
+	table.insert(state.pendingAnalytics, {
+		kind = "economy",
+		flow = flow,
+		currency = "Coins",
+		amount = amount,
+		endingBalance = state.coins,
+		transactionType = transactionType,
+		category = category,
+	})
+end
+
+-- Funnel/social "first X" moments fire once per profile lifetime. The fired set persists in
+-- save data so returning players never re-enter the funnel and skew conversion/social metrics.
+local function markFunnelMilestone(state: PlayerState, eventName: string)
+	if state.funnelMilestones[eventName] then
+		return
+	end
+
+	state.funnelMilestones[eventName] = true
+	table.insert(state.pendingAnalytics, { kind = "custom", event = eventName })
+	markSaveDirty(state)
 end
 
 local function getDuckCount(state: PlayerState): number
@@ -556,6 +597,7 @@ local function grantQuestProgress(state: PlayerState, questId: string, amount: n
 
 		quest.progress -= target
 		state.coins += rewardCoins
+		queueEconomyEvent(state, "source", rewardCoins, "Gameplay", "quest_reward")
 		if rewardDuckFeed > 0 then
 			state.inventory[PrototypeConfig.shop.duckFeed.id] = (state.inventory[PrototypeConfig.shop.duckFeed.id] or 0) + rewardDuckFeed
 		end
@@ -619,6 +661,7 @@ local function grantDailyQuestProgress(state: PlayerState, actionKind: string, a
 
 			if progress >= definition.target then
 				state.coins += definition.rewardCoins
+				queueEconomyEvent(state, "source", definition.rewardCoins, "Gameplay", "daily_quest_reward")
 
 				if definition.rewardDuckFeedAmount > 0 then
 					local duckFeedId = PrototypeConfig.shop.duckFeed.id
@@ -650,6 +693,7 @@ local function grantDailyQuestProgress(state: PlayerState, actionKind: string, a
 	if completedCount >= dailyConfig.questCount and not daily.bonusGranted then
 		daily.bonusGranted = true
 		state.coins += dailyConfig.allCompleteBonusCoins
+		queueEconomyEvent(state, "source", dailyConfig.allCompleteBonusCoins, "Gameplay", "daily_quest_bonus")
 		queueNotice(state, {
 			kind = RemoteProtocol.notices.dailyQuestBonus,
 			bonusCoins = dailyConfig.allCompleteBonusCoins,
@@ -1005,6 +1049,8 @@ local function createPlayerState(): PlayerState
 		starterChoiceCompleted = false,
 		mysteryDuckBoxes = 0,
 		pendingDuckBoxCandidates = nil,
+		pendingAnalytics = {},
+		funnelMilestones = {},
 	}
 
 	for _ = 1, PrototypeConfig.startingDucks do
@@ -1082,6 +1128,8 @@ local function applySavedData(state: PlayerState, savedData: {[string]: any})
 	state.starterChoiceCompleted = savedData.starterChoiceCompleted == true
 	state.mysteryDuckBoxes = math.max(0, math.floor(typeof(savedData.mysteryDuckBoxes) == "number" and savedData.mysteryDuckBoxes or 0))
 	state.pendingDuckBoxCandidates = nil
+	state.funnelMilestones = if typeof(savedData.funnelMilestones) == "table" then savedData.funnelMilestones else {}
+	state.pendingAnalytics = {}
 	state.eggValueLevel = math.clamp(savedData.eggValueLevel, 0, EGG_VALUE_MAX_LEVEL)
 	state.eggSellValue = PrototypeConfig.eggSellValue + state.eggValueLevel * PrototypeConfig.firstUpgrade.valueIncrease
 	state.ducks = {}
@@ -1155,7 +1203,7 @@ local function serializeSaveData(state: PlayerState)
 	end
 
 	return {
-		schemaVersion = 11,
+		schemaVersion = 12,
 		coins = state.coins,
 		eggs = state.eggs,
 		duckFeed = getDuckFeedCount(state),
@@ -1176,6 +1224,7 @@ local function serializeSaveData(state: PlayerState)
 		collectionRewardsClaimed = state.collectionRewardsClaimed,
 		starterChoiceCompleted = state.starterChoiceCompleted,
 		mysteryDuckBoxes = state.mysteryDuckBoxes,
+		funnelMilestones = state.funnelMilestones,
 	}
 end
 
@@ -1463,6 +1512,33 @@ local function serializeStateForViewer(viewer: Player, homeState: PlayerState)
 	return serializedState
 end
 
+-- Drains queued analytics events for the player who owns this state. sendState always pairs a
+-- player with their own state (owner with ownerState, viewer with viewerState), so the Player
+-- passed to the Roblox AnalyticsService is always the actor the events belong to.
+local function flushAnalytics(player: Player, state: PlayerState)
+	if #state.pendingAnalytics == 0 then
+		return
+	end
+
+	for _, event in state.pendingAnalytics do
+		if event.kind == "economy" then
+			AnalyticsService.logEconomy(
+				player,
+				event.flow,
+				event.currency,
+				event.amount,
+				event.endingBalance,
+				event.transactionType,
+				event.category
+			)
+		else
+			AnalyticsService.logCustom(player, event.event)
+		end
+	end
+
+	table.clear(state.pendingAnalytics)
+end
+
 local function sendState(player: Player, state: PlayerState)
 	-- Join-time notices (streak claim, offline eggs, comeback gift) queue until the client
 	-- proves its listener is connected by sending any action, otherwise they fire into the void.
@@ -1473,6 +1549,8 @@ local function sendState(player: Player, state: PlayerState)
 
 		table.clear(state.pendingNotices)
 	end
+
+	flushAnalytics(player, state)
 
 	stateEvent:FireClient(player, serializeStateForViewer(player, state))
 end
@@ -1611,6 +1689,7 @@ local function collectEggs(state: PlayerState)
 
 	state.eggs += collectedEggs
 	state.availableEggs = 0
+	markFunnelMilestone(state, "funnel_first_collect")
 	grantQuestProgress(state, QUEST_COLLECT_EGGS_ID, collectedEggs)
 	grantDailyQuestProgress(state, "collect", collectedEggs)
 	markSaveDirty(state)
@@ -1622,9 +1701,12 @@ local function sellEggs(state: PlayerState)
 	end
 
 	local soldEggs = state.eggs
+	local coinsGained = soldEggs * state.eggSellValue
 
-	state.coins += soldEggs * state.eggSellValue
+	state.coins += coinsGained
 	state.eggs = 0
+	queueEconomyEvent(state, "source", coinsGained, "Gameplay", "egg_sale")
+	markFunnelMilestone(state, "funnel_first_sell")
 	grantQuestProgress(state, QUEST_SELL_EGGS_ID, soldEggs)
 	grantDailyQuestProgress(state, "sell", soldEggs)
 	markSaveDirty(state)
@@ -1638,6 +1720,7 @@ local function buyEggValueUpgrade(state: PlayerState)
 	end
 
 	state.coins -= upgradeCost
+	queueEconomyEvent(state, "sink", upgradeCost, "Shop", "egg_value_upgrade")
 	state.eggValueLevel += 1
 	state.eggSellValue += PrototypeConfig.firstUpgrade.valueIncrease
 	grantQuestProgress(state, QUEST_SPEND_COINS_ID, upgradeCost)
@@ -1694,6 +1777,8 @@ local function buyDuck(state: PlayerState, payload: any)
 	end
 
 	state.coins -= duckPurchaseCost
+	queueEconomyEvent(state, "sink", duckPurchaseCost, "Shop", "duck_purchase")
+	markFunnelMilestone(state, "funnel_first_buy_duck")
 
 	for _ = 1, duckPurchase.duckIncrease do
 		grantDuckWithFamily(state, duckFamily, duckRarity)
@@ -1742,6 +1827,8 @@ local function buyShopItem(state: PlayerState, payload: any)
 	end
 
 	state.coins -= itemDefinition.cost
+	queueEconomyEvent(state, "sink", itemDefinition.cost, "Shop", "shop_" .. itemDefinition.id)
+	markFunnelMilestone(state, "funnel_first_shop_purchase")
 	state.inventory[itemDefinition.id] = (state.inventory[itemDefinition.id] or 0) + itemDefinition.purchaseAmount
 	grantQuestProgress(state, QUEST_SPEND_COINS_ID, itemDefinition.cost)
 	grantDailyQuestProgress(state, "buy_item", 1)
@@ -1922,7 +2009,10 @@ local function claimEggCatchReward(player: Player, state: PlayerState, payload: 
 
 	if coins > 0 then
 		state.coins += coins
+		queueEconomyEvent(state, "source", coins, "Gameplay", "minigame_egg_catch")
 	end
+
+	markFunnelMilestone(state, "funnel_first_minigame")
 
 	if duckFeed > 0 then
 		state.inventory[duckFeedId] = (state.inventory[duckFeedId] or 0) + duckFeed
@@ -2018,6 +2108,7 @@ local function careForDuck(state: PlayerState, payload: any)
 	end
 
 	local levelsGained = addDuckXp(duck, xpAmount)
+	markFunnelMilestone(state, "funnel_first_care")
 	grantQuestProgress(state, QUEST_HELP_DUCKS_ID, 1)
 	grantDailyQuestProgress(state, "help", 1)
 	if levelsGained > 0 then
@@ -2193,6 +2284,12 @@ local function visitFarm(player: Player, payload: any)
 	end
 
 	farmViewTargetsByPlayer[player] = targetPlayer
+
+	local visitorState = statesByPlayer[player]
+
+	if visitorState then
+		markFunnelMilestone(visitorState, "social_first_visit")
+	end
 end
 
 local function returnHomeFarm(player: Player)
@@ -2284,6 +2381,7 @@ local function checkCollectionMilestones(state: PlayerState)
 
 		table.insert(state.collectionRewardsClaimed, reward.id)
 		state.coins += reward.rewardCoins
+		queueEconomyEvent(state, "source", reward.rewardCoins, "Gameplay", "collection_reward")
 
 		if reward.rewardTreat > 0 then
 			local duckTreatId = PrototypeConfig.shop.duckTreat.id
@@ -2484,6 +2582,7 @@ local function claimDailyCheckIn(player: Player, state: PlayerState)
 	local duckTreatId = PrototypeConfig.shop.duckTreat.id
 
 	state.coins += rewardCoins
+	queueEconomyEvent(state, "source", rewardCoins, "TimedReward", "daily_checkin")
 
 	if rewardTreat > 0 then
 		state.inventory[duckTreatId] = (state.inventory[duckTreatId] or 0) + rewardTreat

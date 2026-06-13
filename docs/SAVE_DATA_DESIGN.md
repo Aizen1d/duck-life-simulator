@@ -108,7 +108,7 @@ Object:
 
 ```lua
 {
-	schemaVersion = 11,  -- v10: unlockLadder + dailyQuests + streakDay + lastSeenUtc + toy. v11: per-duck family/rarity, collectionRewardsClaimed, starterChoiceCompleted, mysteryDuckBoxes.
+	schemaVersion = 12,  -- v10: unlockLadder + dailyQuests + streakDay + lastSeenUtc + toy. v11: per-duck family/rarity, collectionRewardsClaimed, starterChoiceCompleted, mysteryDuckBoxes. v12: funnelMilestones (Analytics V0 first-moment dedup).
 	coins = 0,
 	eggs = 0,
 	duckFeed = 0,
@@ -167,8 +167,11 @@ Object:
 		bonusGranted = false,
 	},
 	unlockLadder = true,
+	funnelMilestones = {},  -- set of fired analytics first-moment event names, e.g. funnel_first_sell = true
 }
 ```
+
+`funnelMilestones` is a set keyed by analytics event name (only `true` values are stored). It exists solely to fire each `funnel_*`/`social_*` first-moment event once per profile lifetime; it never affects gameplay. It is the only save field analytics may write.
 
 `nextDuckId` should be saved so future ducks can keep stable IDs even after deletes, breeding, mutation, or sorting are added.
 
@@ -260,7 +263,9 @@ Every saved object must include `schemaVersion`.
 
 For V0:
 
-- `schemaVersion = 10`
+- `schemaVersion = 12`
+- Existing `schemaVersion = 11` saves load with an empty `funnelMilestones` set, so a returning player's already-passed first moments (first sell, first care, etc.) will not re-fire — except the very next time each action happens after the update, which logs one trailing funnel event per milestone. This is a one-time, harmless backfill at the schema-12 boundary.
+- Existing `schemaVersion = 10` saves load with per-duck `family = "classic_yellow"`/`rarity = "common"`, empty `collectionRewardsClaimed`, `starterChoiceCompleted = false` (triggering the Starter Choice prompt once), and `mysteryDuckBoxes = 0`.
 - Existing `schemaVersion = 9` saves load with `unlockLadder = false`, keeping every feature unlocked for pre-ladder profiles.
 - Existing `schemaVersion = 8` saves load with empty Daily Quests V0 state, which fills in on the next daily-quest action.
 - Existing `schemaVersion = 7` saves load with default `streakDay` at `0`, so the first post-update daily claim starts the streak at day `1`.

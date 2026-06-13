@@ -334,6 +334,8 @@ export type ComebackGiftDefinition = {
 	awayDaysThreshold: number,
 	duckFeedAmount: number,
 	duckTreatAmount: number,
+	eggType: string,
+	eggAmount: number,
 }
 
 export type DailyQuestPoolEntry = {
@@ -350,6 +352,8 @@ export type DailyQuestsDefinition = {
 	questCount: number,
 	slotOffsets: {number},
 	allCompleteBonusCoins: number,
+	allCompleteBonusEggType: string,
+	allCompleteBonusEggAmount: number,
 	pool: {DailyQuestPoolEntry},
 }
 

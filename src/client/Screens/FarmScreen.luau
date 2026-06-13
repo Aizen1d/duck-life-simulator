@@ -24,6 +24,21 @@ local stateEvent = remoteFolder:WaitForChild(RemoteProtocol.stateEventName) :: R
 local noticeEvent = remoteFolder:WaitForChild(RemoteProtocol.noticeEventName) :: RemoteEvent
 local IS_STUDIO = RunService:IsStudio()
 
+-- Resolves an egg type id to its display name from config; falls back to the id.
+local function eggDisplayName(eggType: any): string
+	if typeof(eggType) ~= "string" then
+		return "Egg"
+	end
+
+	for _, eggDef in PrototypeConfig.eggTypes do
+		if eggDef.id == eggType then
+			return eggDef.displayName
+		end
+	end
+
+	return eggType
+end
+
 type DuckState = {
 	id: number,
 	index: number,
@@ -288,6 +303,11 @@ local TUTORIAL_STEPS: {TutorialStep} = {
 		id = "families",
 		title = "Duck Families",
 		body = "Different duck families lay more eggs! Open the Buy Duck panel to browse families. Check your Duckdex collection to earn milestone rewards.",
+	},
+	{
+		id = "hatching",
+		title = "Hatch Eggs",
+		body = "The Eggs tab in the Duck Shop sells eggs that hatch into new ducks! Buy one, incubate it, and come back when the timer ends to meet your new duck. Rarer eggs take longer but hatch fancier families.",
 	},
 }
 local DUCK_SLOTS = {
@@ -1154,12 +1174,17 @@ end
 local function createBuyDuckFamilyPanel(
 	farmState: FarmState,
 	layout: LayoutMetrics,
-	duckdexTab: boolean,
+	activeTab: string,
 	onBuyFamily: (familyId: string) -> (),
-	onToggleTab: () -> (),
+	onSelectTab: (tabId: string) -> (),
 	onClose: () -> (),
-	onOpenMysteryBox: () -> ()
+	onOpenMysteryBox: () -> (),
+	onBuyEgg: (eggType: string) -> (),
+	onIncubate: (eggType: string) -> (),
+	onCollectHatch: (slotIndex: number) -> ()
 )
+	local duckdexTab = activeTab == "duckdex"
+	local eggsTab = activeTab == "eggs"
 	local black = Color3.new(0, 0, 0)
 	local uiBase = Theme.zIndex.ui
 	local panelW = if layout.isShortLandscape then 288 elseif layout.isCompact then 308 else 332
@@ -1568,6 +1593,200 @@ local function createBuyDuckFamilyPanel(
 
 	local duckdexCanvasH = duckdexCursorY
 
+	-- ── EGGS TAB content (Phase 6 hatching) ───────────────────────────────
+	local eggRows = {}
+	local eggCursorY = 0
+
+	local function formatCountdown(seconds: number): string
+		local s = math.max(0, math.floor(seconds))
+		return string.format("%d:%02d", math.floor(s / 60), s % 60)
+	end
+
+	local shortRarity: {[string]: string} = {
+		common = "Com",
+		uncommon = "Unc",
+		rare = "Rare",
+		epic = "Epic",
+		legendary = "Leg",
+	}
+
+	-- Incubator status row (V0 has a single slot). Odds are shown per egg below so the player
+	-- always sees the chances before buying or incubating, per the visible-odds rule.
+	local incubatorSlots = farmState.incubatorSlots or {}
+	local slot = incubatorSlots[1]
+	local slotFree = slot == nil
+	local incubatorRowH = if layout.isShortLandscape then 44 else 50
+
+	eggRows.Incubator = e("Frame", {
+		AnchorPoint = Vector2.new(0, 0),
+		BackgroundColor3 = if slot and slot.ready then Color3.fromRGB(255, 244, 222) else Color3.fromRGB(244, 241, 233),
+		BorderSizePixel = 0,
+		Position = UDim2.fromOffset(0, eggCursorY),
+		Size = UDim2.fromOffset(contentW, incubatorRowH),
+		ZIndex = uiBase + 13,
+	}, {
+		Corner = e("UICorner", { CornerRadius = Theme.corner }),
+		Stroke = e("UIStroke", {
+			Color = if slot and slot.ready then Theme.colors.coral else Theme.colors.panel,
+			Thickness = 1,
+			Transparency = 0.3,
+		}),
+		Icon = e("TextLabel", {
+			BackgroundTransparency = 1,
+			Font = Enum.Font.GothamBold,
+			Position = UDim2.fromOffset(8, 0),
+			Size = UDim2.fromOffset(24, incubatorRowH),
+			Text = if slot == nil then "·" elseif slot.ready then "🐣" else "🥚",
+			TextSize = if layout.isShortLandscape then 16 else 18,
+			TextXAlignment = Enum.TextXAlignment.Center,
+			ZIndex = uiBase + 13,
+		}),
+		Label = e("TextLabel", {
+			BackgroundTransparency = 1,
+			Font = Enum.Font.GothamBold,
+			Position = UDim2.fromOffset(36, 0),
+			Size = UDim2.fromOffset(contentW - 36 - 72, incubatorRowH),
+			Text = if slot == nil then "Incubator empty"
+				elseif slot.ready then string.format("%s ready to hatch!", slot.displayName)
+				else string.format("%s  ·  %s", slot.displayName, formatCountdown(slot.secondsRemaining)),
+			TextColor3 = Theme.colors.text,
+			TextSize = if layout.isShortLandscape then 11 else 12,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			TextYAlignment = Enum.TextYAlignment.Center,
+			ZIndex = uiBase + 13,
+		}),
+		CollectBtn = if slot and slot.ready then e("TextButton", {
+			AnchorPoint = Vector2.new(1, 0.5),
+			AutoButtonColor = true,
+			BackgroundColor3 = Theme.colors.coral,
+			BorderSizePixel = 0,
+			Font = Enum.Font.GothamBold,
+			Position = UDim2.new(1, -8, 0.5, 0),
+			Size = UDim2.fromOffset(if layout.isShortLandscape then 60 else 66, if layout.isShortLandscape then 24 else 28),
+			Text = "Collect",
+			TextColor3 = Color3.new(1, 1, 1),
+			TextSize = if layout.isShortLandscape then 10 else 11,
+			ZIndex = uiBase + 13,
+			[React.Event.Activated] = function()
+				onCollectHatch(slot.slotIndex)
+			end,
+		}, {
+			Corner = e("UICorner", { CornerRadius = Theme.corner }),
+		}) else nil,
+	})
+
+	eggCursorY += incubatorRowH + 8
+
+	local eggRowH = if layout.isShortLandscape then 58 else 66
+
+	for i, eggDef in PrototypeConfig.eggTypes do
+		local owned = (farmState.eggInventory or {})[eggDef.id] or 0
+		local canAfford = farmState.coins >= eggDef.buyCost
+		local canIncubate = owned > 0 and slotFree
+
+		local oddsParts = {}
+		for _, rarity in { "common", "uncommon", "rare", "epic", "legendary" } do
+			local chance = eggDef.odds[rarity]
+			if typeof(chance) == "number" and chance > 0 then
+				table.insert(oddsParts, string.format("%d%% %s", chance, shortRarity[rarity] or rarity))
+			end
+		end
+
+		eggRows["Egg" .. i] = e("Frame", {
+			AnchorPoint = Vector2.new(0, 0),
+			BackgroundTransparency = 1,
+			Position = UDim2.fromOffset(0, eggCursorY),
+			Size = UDim2.fromOffset(contentW, eggRowH),
+			ZIndex = uiBase + 13,
+		}, {
+			NameLabel = e("TextLabel", {
+				BackgroundTransparency = 1,
+				Font = Enum.Font.GothamBold,
+				Position = UDim2.fromOffset(0, 4),
+				Size = UDim2.fromOffset(contentW - 84, if layout.isShortLandscape then 15 else 17),
+				Text = eggDef.displayName,
+				TextColor3 = Theme.colors.text,
+				TextSize = if layout.isShortLandscape then 11 else 12,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				ZIndex = uiBase + 13,
+			}),
+			OddsLabel = e("TextLabel", {
+				BackgroundTransparency = 1,
+				Font = Enum.Font.Gotham,
+				Position = UDim2.fromOffset(0, if layout.isShortLandscape then 22 else 24),
+				Size = UDim2.fromOffset(contentW - 84, if layout.isShortLandscape then 13 else 14),
+				Text = table.concat(oddsParts, "   "),
+				TextColor3 = Theme.colors.mutedText,
+				TextSize = if layout.isShortLandscape then 9 else 10,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				ZIndex = uiBase + 13,
+			}),
+			MetaLabel = e("TextLabel", {
+				BackgroundTransparency = 1,
+				Font = Enum.Font.Gotham,
+				Position = UDim2.fromOffset(0, if layout.isShortLandscape then 38 else 42),
+				Size = UDim2.fromOffset(contentW - 84, if layout.isShortLandscape then 13 else 14),
+				Text = string.format("%d min hatch  ·  Owned %d", math.floor(eggDef.hatchSeconds / 60), owned),
+				TextColor3 = Theme.colors.mutedText,
+				TextSize = if layout.isShortLandscape then 9 else 10,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				ZIndex = uiBase + 13,
+			}),
+			BuyBtn = e("TextButton", {
+				AnchorPoint = Vector2.new(1, 0),
+				AutoButtonColor = canAfford,
+				BackgroundColor3 = if canAfford then Theme.colors.coin else Color3.fromRGB(200, 196, 188),
+				BorderSizePixel = 0,
+				Font = Enum.Font.GothamBold,
+				Position = UDim2.new(1, 0, 0, 4),
+				Size = UDim2.fromOffset(76, if layout.isShortLandscape then 22 else 24),
+				Text = string.format("Buy  %d", eggDef.buyCost),
+				TextColor3 = Color3.new(1, 1, 1),
+				TextSize = if layout.isShortLandscape then 10 else 11,
+				ZIndex = uiBase + 13,
+				[React.Event.Activated] = if canAfford then function()
+					onBuyEgg(eggDef.id)
+				end else nil,
+			}, {
+				Corner = e("UICorner", { CornerRadius = Theme.corner }),
+			}),
+			IncubateBtn = e("TextButton", {
+				AnchorPoint = Vector2.new(1, 1),
+				AutoButtonColor = canIncubate,
+				BackgroundColor3 = if canIncubate then Theme.colors.coral else Color3.fromRGB(200, 196, 188),
+				BorderSizePixel = 0,
+				Font = Enum.Font.GothamBold,
+				Position = UDim2.new(1, 0, 1, -4),
+				Size = UDim2.fromOffset(76, if layout.isShortLandscape then 22 else 24),
+				Text = if slotFree then "Incubate" else "Slot full",
+				TextColor3 = Color3.new(1, 1, 1),
+				TextSize = if layout.isShortLandscape then 10 else 11,
+				ZIndex = uiBase + 13,
+				[React.Event.Activated] = if canIncubate then function()
+					onIncubate(eggDef.id)
+				end else nil,
+			}, {
+				Corner = e("UICorner", { CornerRadius = Theme.corner }),
+			}),
+			Divider = if i < #PrototypeConfig.eggTypes then e("Frame", {
+				AnchorPoint = Vector2.new(0, 1),
+				BackgroundColor3 = Theme.colors.panel,
+				BackgroundTransparency = 0.6,
+				BorderSizePixel = 0,
+				Position = UDim2.new(0, 0, 1, 0),
+				Size = UDim2.new(1, 0, 0, 1),
+				ZIndex = uiBase + 13,
+			}) else nil,
+		})
+
+		eggCursorY += eggRowH
+	end
+
+	local eggsCanvasH = eggCursorY
+
+	local activeCanvasH = if eggsTab then eggsCanvasH elseif duckdexTab then duckdexCanvasH else familiesCanvasH
+	local activeRows = if eggsTab then eggRows elseif duckdexTab then duckdexRows else familyRows
+
 	return e("Frame", {
 		Active = true,
 		BackgroundTransparency = 1,
@@ -1637,31 +1856,44 @@ local function createBuyDuckFamilyPanel(
 				Size = UDim2.new(1, 0, 0, tabH),
 				ZIndex = uiBase + 12,
 			}, {
-				BuyTab = e("TextButton", {
+				FamiliesTab = e("TextButton", {
 					AutoButtonColor = false,
-					BackgroundColor3 = if not duckdexTab then Color3.new(1, 1, 1) else Color3.fromRGB(240, 237, 228),
+					BackgroundColor3 = if activeTab == "families" then Color3.new(1, 1, 1) else Color3.fromRGB(240, 237, 228),
 					BorderSizePixel = 0,
 					Font = Enum.Font.GothamBold,
-					Position = UDim2.fromOffset(0, 0),
-					Size = UDim2.new(0.5, 0, 1, 0),
+					Position = UDim2.fromScale(0, 0),
+					Size = UDim2.new(1 / 3, 0, 1, 0),
 					Text = "Families",
-					TextColor3 = if not duckdexTab then Theme.colors.coral else Theme.colors.mutedText,
+					TextColor3 = if activeTab == "families" then Theme.colors.coral else Theme.colors.mutedText,
 					TextSize = if layout.isShortLandscape then 10 else 11,
 					ZIndex = uiBase + 12,
-					[React.Event.Activated] = if duckdexTab then onToggleTab else nil,
+					[React.Event.Activated] = if activeTab ~= "families" then function() onSelectTab("families") end else nil,
 				}),
 				DuckdexTab = e("TextButton", {
 					AutoButtonColor = false,
 					BackgroundColor3 = if duckdexTab then Color3.new(1, 1, 1) else Color3.fromRGB(240, 237, 228),
 					BorderSizePixel = 0,
 					Font = Enum.Font.GothamBold,
-					Position = UDim2.new(0.5, 0, 0, 0),
-					Size = UDim2.new(0.5, 0, 1, 0),
-					Text = if boxCount > 0 then string.format("Duckdex  %d/6 🎁", ownedCount) else string.format("Duckdex  %d/6", ownedCount),
+					Position = UDim2.new(1 / 3, 0, 0, 0),
+					Size = UDim2.new(1 / 3, 0, 1, 0),
+					Text = if boxCount > 0 then string.format("Duckdex 🎁") else string.format("Duckdex %d/6", ownedCount),
 					TextColor3 = if duckdexTab then Theme.colors.coral else Theme.colors.mutedText,
 					TextSize = if layout.isShortLandscape then 10 else 11,
 					ZIndex = uiBase + 12,
-					[React.Event.Activated] = if not duckdexTab then onToggleTab else nil,
+					[React.Event.Activated] = if not duckdexTab then function() onSelectTab("duckdex") end else nil,
+				}),
+				EggsTab = e("TextButton", {
+					AutoButtonColor = false,
+					BackgroundColor3 = if eggsTab then Color3.new(1, 1, 1) else Color3.fromRGB(240, 237, 228),
+					BorderSizePixel = 0,
+					Font = Enum.Font.GothamBold,
+					Position = UDim2.new(2 / 3, 0, 0, 0),
+					Size = UDim2.new(1 / 3, 0, 1, 0),
+					Text = if slot and slot.ready then "Eggs 🐣" else "Eggs",
+					TextColor3 = if eggsTab then Theme.colors.coral else Theme.colors.mutedText,
+					TextSize = if layout.isShortLandscape then 10 else 11,
+					ZIndex = uiBase + 12,
+					[React.Event.Activated] = if not eggsTab then function() onSelectTab("eggs") end else nil,
 				}),
 				Divider = e("Frame", {
 					AnchorPoint = Vector2.new(0.5, 1),
@@ -1677,14 +1909,14 @@ local function createBuyDuckFamilyPanel(
 				AnchorPoint = Vector2.new(0, 0),
 				BackgroundTransparency = 1,
 				BorderSizePixel = 0,
-				CanvasSize = UDim2.fromOffset(0, if duckdexTab then duckdexCanvasH else familiesCanvasH),
+				CanvasSize = UDim2.fromOffset(0, activeCanvasH),
 				Position = UDim2.new(0, padX, 0, headerH + tabH + 6),
 				ScrollBarImageColor3 = Theme.colors.panel,
 				ScrollBarThickness = 3,
 				ScrollingDirection = Enum.ScrollingDirection.Y,
 				Size = UDim2.new(1, -padX * 2, 1, -(headerH + tabH + 8)),
 				ZIndex = uiBase + 12,
-			}, if duckdexTab then duckdexRows else familyRows),
+			}, activeRows),
 		}),
 	})
 end
@@ -2467,7 +2699,7 @@ local function createWelcomeBackCard(welcomeBack: WelcomeBackData?, layout: Layo
 		table.insert(lines, streakLine)
 	end
 
-	if (welcomeBack.giftFeed or 0) > 0 or (welcomeBack.giftTreat or 0) > 0 then
+	if (welcomeBack.giftFeed or 0) > 0 or (welcomeBack.giftTreat or 0) > 0 or (welcomeBack.giftEgg or 0) > 0 then
 		local giftParts = {}
 
 		if (welcomeBack.giftFeed or 0) > 0 then
@@ -2476,6 +2708,10 @@ local function createWelcomeBackCard(welcomeBack: WelcomeBackData?, layout: Layo
 
 		if (welcomeBack.giftTreat or 0) > 0 then
 			table.insert(giftParts, string.format("Treat x%d", welcomeBack.giftTreat or 0))
+		end
+
+		if (welcomeBack.giftEgg or 0) > 0 then
+			table.insert(giftParts, string.format("%s x%d", eggDisplayName(PrototypeConfig.comebackGift.eggType), welcomeBack.giftEgg or 0))
 		end
 
 		table.insert(lines, string.format("The ducks missed you! Gift: %s", table.concat(giftParts, " + ")))
@@ -5146,12 +5382,12 @@ local function createTutorialOverlay(
 			then "Open Shop to continue."
 		elseif buyDuckNeedsCoins
 			then "Use Collect and Sell until Buy Duck is ready."
-		elseif step.id == "streak" or step.id == "quests" or step.id == "families"
+		elseif step.id == "streak" or step.id == "quests" or step.id == "families" or step.id == "hatching"
 			then ""
 		elseif step.id == "care" and farmState.careRequestDuckIndex <= 0
 			then "Wait for one duck to ask for help."
 			else "Complete the highlighted task to continue."
-	local isInfoStep = step.id == "streak" or step.id == "quests" or step.id == "families"
+	local isInfoStep = step.id == "streak" or step.id == "quests" or step.id == "families" or step.id == "hatching"
 	local function createTutorialDim(position: UDim2, size: UDim2)
 		local commonProps = {
 			BackgroundColor3 = Color3.fromRGB(39, 47, 44),
@@ -6251,7 +6487,7 @@ local function FarmScreen()
 	local reducedMotion, setReducedMotion = React.useState(false)
 	local starterChoiceOpen, setStarterChoiceOpen = React.useState(false)
 	local buyDuckPanelOpen, setBuyDuckPanelOpen = React.useState(false)
-	local duckdexTabOpen, setDuckdexTabOpen = React.useState(false)
+	local shopTab, setShopTab = React.useState("families")
 	local previousStateRef = React.useRef(nil :: FarmState?)
 	local feedbackIdRef = React.useRef(0)
 	local scenePointerHandlerRef = React.useRef(nil :: ((Vector2, number?) -> ())?)
@@ -6275,6 +6511,7 @@ local function FarmScreen()
 			or activeTutorialStepId == "streak"
 			or activeTutorialStepId == "quests"
 			or activeTutorialStepId == "families"
+			or activeTutorialStepId == "hatching"
 	end
 	local function isTutorialCareDuckAllowed(duckIndex: number?): boolean
 		if activeTutorialStepId ~= "care" or duckIndex == nil then
@@ -6824,15 +7061,20 @@ local function FarmScreen()
 				end
 			elseif kind == RemoteProtocol.notices.dailyQuestBonus then
 				local bonusCoins = if typeof(notice.bonusCoins) == "number" then notice.bonusCoins else 0
+				local bonusEggAmount = if typeof(notice.bonusEggAmount) == "number" then notice.bonusEggAmount else 0
+				local bonusEggName = eggDisplayName(notice.bonusEggType)
 
 				if bonusCoins > 0 then
+					local bonusText = if bonusEggAmount > 0
+						then string.format("All daily goals done! +%d coins + %s x%d", bonusCoins, bonusEggName, bonusEggAmount)
+						else string.format("All daily goals done! +%d bonus coins", bonusCoins)
 					feedbackIdRef.current += 1
 					setFeedbackItems(function(items: {FeedbackItem})
 						local nextItems = table.clone(items)
 						table.insert(nextItems, createFeedbackItem(
 							feedbackIdRef.current,
 							"daily_bonus",
-							string.format("All daily goals done! +%d bonus coins", bonusCoins),
+							bonusText,
 							Theme.colors.coral,
 							0.5,
 							0.24
@@ -6843,13 +7085,15 @@ local function FarmScreen()
 			elseif kind == RemoteProtocol.notices.comebackGift then
 				local giftFeed = if typeof(notice.duckFeed) == "number" then notice.duckFeed else 0
 				local giftTreat = if typeof(notice.duckTreat) == "number" then notice.duckTreat else 0
+				local giftEgg = if typeof(notice.eggAmount) == "number" then notice.eggAmount else 0
 
-				if (giftFeed > 0 or giftTreat > 0) and isWelcomeWindowOpen() then
+				if (giftFeed > 0 or giftTreat > 0 or giftEgg > 0) and isWelcomeWindowOpen() then
 					mergeWelcomeBack({
 						giftFeed = giftFeed,
 						giftTreat = giftTreat,
+						giftEgg = giftEgg,
 					})
-				elseif giftFeed > 0 or giftTreat > 0 then
+				elseif giftFeed > 0 or giftTreat > 0 or giftEgg > 0 then
 					local giftParts = {}
 
 					if giftFeed > 0 then
@@ -6858,6 +7102,10 @@ local function FarmScreen()
 
 					if giftTreat > 0 then
 						table.insert(giftParts, string.format("Treat x%d", giftTreat))
+					end
+
+					if giftEgg > 0 then
+						table.insert(giftParts, string.format("%s x%d", eggDisplayName(notice.eggType), giftEgg))
 					end
 
 					feedbackIdRef.current += 1
@@ -6958,6 +7206,25 @@ local function FarmScreen()
 						"duck_box",
 						toastText,
 						Theme.colors.duck,
+						0.5,
+						0.21
+					))
+					return nextItems
+				end)
+			elseif kind == RemoteProtocol.notices.eggHatched then
+				local displayName = if typeof(notice.displayName) == "string" then notice.displayName else "Duck"
+				local rarity = if typeof(notice.rarity) == "string" then notice.rarity else ""
+				local toastText = if rarity ~= "" and rarity ~= "common"
+					then string.format("Hatched %s! (%s)", displayName, (rarity:sub(1, 1)):upper() .. rarity:sub(2))
+					else string.format("Hatched %s!", displayName)
+				feedbackIdRef.current += 1
+				setFeedbackItems(function(items: {FeedbackItem})
+					local nextItems = table.clone(items)
+					table.insert(nextItems, createFeedbackItem(
+						feedbackIdRef.current,
+						"egg_hatched",
+						toastText,
+						Theme.colors.coral,
 						0.5,
 						0.21
 					))
@@ -7660,20 +7927,29 @@ local function FarmScreen()
 		then createBuyDuckFamilyPanel(
 			farmState,
 			layout,
-			duckdexTabOpen,
+			shopTab,
 			function(familyId: string)
 				actionEvent:FireServer(RemoteProtocol.actions.buyDuck, { familyId = familyId })
 				advanceTutorial("buy_duck")
 				setBuyDuckPanelOpen(false)
 			end,
-			function()
-				setDuckdexTabOpen(function(v) return not v end)
+			function(tabId: string)
+				setShopTab(tabId)
 			end,
 			function()
 				setBuyDuckPanelOpen(false)
 			end,
 			function()
 				actionEvent:FireServer(RemoteProtocol.actions.openMysteryDuckBox)
+			end,
+			function(eggType: string)
+				actionEvent:FireServer(RemoteProtocol.actions.buyEgg, { eggType = eggType })
+			end,
+			function(eggType: string)
+				actionEvent:FireServer(RemoteProtocol.actions.startIncubation, { eggType = eggType })
+			end,
+			function(slotIndex: number)
+				actionEvent:FireServer(RemoteProtocol.actions.collectHatch, { slotIndex = slotIndex })
 			end
 		)
 		else nil

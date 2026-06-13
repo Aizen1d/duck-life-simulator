@@ -505,12 +505,18 @@ local PrototypeConfig = {
 		awayDaysThreshold = 7,
 		duckFeedAmount = 2,
 		duckTreatAmount = 1,
+		-- Phase 6: a Speckled Egg joins the returning-player package (see ROADMAP).
+		eggType = "speckled",
+		eggAmount = 1,
 	},
 
 	dailyQuests = {
 		questCount = 3,
 		slotOffsets = { 0, 3, 5 },
 		allCompleteBonusCoins = 30,
+		-- Phase 6: completing all three daily quests also grants a Speckled Egg.
+		allCompleteBonusEggType = "speckled",
+		allCompleteBonusEggAmount = 1,
 		pool = {
 			{ id = "daily_collect", displayName = "Daily: Collect 30 eggs", action = "collect", target = 30, rewardCoins = 15, rewardDuckFeedAmount = 0, rewardDuckTreatAmount = 0 },
 			{ id = "daily_sell", displayName = "Daily: Sell 25 eggs", action = "sell", target = 25, rewardCoins = 15, rewardDuckFeedAmount = 0, rewardDuckTreatAmount = 0 },

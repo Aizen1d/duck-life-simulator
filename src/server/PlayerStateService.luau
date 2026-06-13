@@ -313,6 +313,16 @@ local function markFunnelMilestone(state: PlayerState, eventName: string)
 	markSaveDirty(state)
 end
 
+-- Grants eggs into the inventory (Phase 6 reward sources: daily bonus, comeback gift, etc.).
+local function grantEgg(state: PlayerState, eggType: string, amount: number)
+	if amount <= 0 then
+		return
+	end
+
+	state.eggInventory[eggType] = (state.eggInventory[eggType] or 0) + amount
+	markSaveDirty(state)
+end
+
 local function getDuckCount(state: PlayerState): number
 	return #state.ducks
 end
@@ -697,9 +707,12 @@ local function grantDailyQuestProgress(state: PlayerState, actionKind: string, a
 		daily.bonusGranted = true
 		state.coins += dailyConfig.allCompleteBonusCoins
 		queueEconomyEvent(state, "source", dailyConfig.allCompleteBonusCoins, "Gameplay", "daily_quest_bonus")
+		grantEgg(state, dailyConfig.allCompleteBonusEggType, dailyConfig.allCompleteBonusEggAmount)
 		queueNotice(state, {
 			kind = RemoteProtocol.notices.dailyQuestBonus,
 			bonusCoins = dailyConfig.allCompleteBonusCoins,
+			bonusEggType = dailyConfig.allCompleteBonusEggType,
+			bonusEggAmount = dailyConfig.allCompleteBonusEggAmount,
 		})
 		markSaveDirty(state)
 	end
@@ -1216,11 +1229,14 @@ local function applySavedData(state: PlayerState, savedData: {[string]: any})
 
 		state.inventory[duckFeedId] = (state.inventory[duckFeedId] or 0) + comebackConfig.duckFeedAmount
 		state.inventory[duckTreatId] = (state.inventory[duckTreatId] or 0) + comebackConfig.duckTreatAmount
+		grantEgg(state, comebackConfig.eggType, comebackConfig.eggAmount)
 		state.pendingComebackGift = true
 		queueNotice(state, {
 			kind = RemoteProtocol.notices.comebackGift,
 			duckFeed = comebackConfig.duckFeedAmount,
 			duckTreat = comebackConfig.duckTreatAmount,
+			eggType = comebackConfig.eggType,
+			eggAmount = comebackConfig.eggAmount,
 		})
 	end
 

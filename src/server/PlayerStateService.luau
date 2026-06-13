@@ -1645,6 +1645,10 @@ local function buyEggValueUpgrade(state: PlayerState)
 	markSaveDirty(state)
 end
 
+-- Forward declaration: buyDuck calls grantDuckWithFamily, whose full definition
+-- lives further down with the other Phase 5 collection/duck-grant helpers.
+local grantDuckWithFamily: (PlayerState, string, string) -> ()
+
 local function buyDuck(state: PlayerState, payload: any)
 	local duckPurchase = PrototypeConfig.duckPurchase
 	local duckPurchaseCost: number
@@ -2302,7 +2306,8 @@ local function checkCollectionMilestones(state: PlayerState)
 	end
 end
 
-local function grantDuckWithFamily(state: PlayerState, family: string, rarity: string)
+-- Assigns into the forward declaration above buyDuck (this is the real definition).
+function grantDuckWithFamily(state: PlayerState, family: string, rarity: string)
 	addDuck(state, family, rarity)
 	checkCollectionMilestones(state)
 	markSaveDirty(state)

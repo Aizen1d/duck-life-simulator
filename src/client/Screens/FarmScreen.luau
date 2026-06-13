@@ -1151,6 +1151,483 @@ local function formatQuestCompleteFeedback(quest: QuestState): string
 	return "Quest " .. rewardSummary
 end
 
+local function createBuyDuckFamilyPanel(
+	farmState: FarmState,
+	layout: LayoutMetrics,
+	duckdexTab: boolean,
+	onBuyFamily: (familyId: string) -> (),
+	onToggleTab: () -> (),
+	onClose: () -> ()
+)
+	local black = Color3.new(0, 0, 0)
+	local uiBase = Theme.zIndex.ui
+	local panelW = if layout.isShortLandscape then 288 elseif layout.isCompact then 308 else 332
+	local padX = 14
+	local rowH = if layout.isShortLandscape then 40 else 46
+	local milestoneRowH = if layout.isShortLandscape then 28 else 32
+	local tabH = if layout.isShortLandscape then 28 else 32
+	local headerH = if layout.isShortLandscape then 36 else 40
+	local contentW = panelW - padX * 2
+	local panelH = if layout.isShortLandscape then 296 else 360
+	local contentAreaH = panelH - headerH - tabH - 8
+
+	-- Collect owned families from ducks
+	local ownedFamilies: {[string]: boolean} = {}
+
+	for _, duck in farmState.ducks do
+		if typeof(duck.family) == "string" and duck.family ~= "" and duck.family ~= "golden" then
+			ownedFamilies[duck.family] = true
+		end
+	end
+
+	local ownedCount = 0
+
+	for _ in ownedFamilies do
+		ownedCount += 1
+	end
+
+	local collectionPct = math.floor(ownedCount / 6 * 100)
+
+	-- Rarity colour helper
+	local function rarityColor(rarity: string): Color3
+		if rarity == "legendary" then return Color3.fromRGB(220, 165, 30)
+		elseif rarity == "epic" then return Color3.fromRGB(150, 80, 210)
+		elseif rarity == "rare" then return Color3.fromRGB(70, 130, 210)
+		elseif rarity == "uncommon" then return Color3.fromRGB(80, 160, 80)
+		end
+		return Theme.colors.mutedText
+	end
+
+	local function rarityLabel(rarity: string): string
+		return (rarity:sub(1, 1)):upper() .. rarity:sub(2)
+	end
+
+	-- ── FAMILIES TAB content ──────────────────────────────────────────────
+	local familyRows = {}
+	local buyableCount = 0
+
+	for i, familyDef in PrototypeConfig.families do
+		local isBuyable = familyDef.buyCost ~= nil
+		local isGolden = familyDef.id == "golden"
+		local cost = familyDef.buyCost
+		local canAfford = isBuyable and cost ~= nil and farmState.coins >= cost
+		local rowY = (i - 1) * rowH
+		local rc = rarityColor(familyDef.rarity)
+		local rl = rarityLabel(familyDef.rarity)
+
+		if isBuyable then
+			buyableCount += 1
+		end
+
+		familyRows["Row" .. i] = e("Frame", {
+			AnchorPoint = Vector2.new(0, 0),
+			BackgroundTransparency = 1,
+			Position = UDim2.fromOffset(0, rowY),
+			Size = UDim2.fromOffset(contentW, rowH),
+			ZIndex = uiBase + 13,
+		}, {
+			NameLabel = e("TextLabel", {
+				BackgroundTransparency = 1,
+				Font = Enum.Font.GothamBold,
+				Position = UDim2.fromOffset(0, if layout.isShortLandscape then 6 else 8),
+				Size = UDim2.fromOffset(contentW - (if isBuyable then 100 else 68), if layout.isShortLandscape then 15 else 17),
+				Text = familyDef.displayName,
+				TextColor3 = if isGolden then Color3.fromRGB(150, 150, 150) else Theme.colors.text,
+				TextSize = if layout.isShortLandscape then 10 else 11,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				ZIndex = uiBase + 13,
+			}),
+			RarityBadge = e("TextLabel", {
+				BackgroundColor3 = rc,
+				BackgroundTransparency = if isGolden then 0.5 else 0.15,
+				Font = Enum.Font.Gotham,
+				Position = UDim2.fromOffset(0, if layout.isShortLandscape then 23 else 28),
+				Size = UDim2.fromOffset(if layout.isShortLandscape then 52 else 60, if layout.isShortLandscape then 13 else 14),
+				Text = rl,
+				TextColor3 = Color3.new(1, 1, 1),
+				TextSize = if layout.isShortLandscape then 8 else 9,
+				TextXAlignment = Enum.TextXAlignment.Center,
+				ZIndex = uiBase + 13,
+			}, {
+				Corner = e("UICorner", { CornerRadius = UDim.new(1, 0) }),
+			}),
+			CostOrTag = if isBuyable then e("TextLabel", {
+				AnchorPoint = Vector2.new(1, 0),
+				BackgroundTransparency = 1,
+				Font = Enum.Font.Gotham,
+				Position = UDim2.new(1, 0, 0, if layout.isShortLandscape then 6 else 8),
+				Size = UDim2.fromOffset(54, if layout.isShortLandscape then 14 else 15),
+				Text = string.format("%d coins", cost or 0),
+				TextColor3 = if canAfford then Theme.colors.coin else Theme.colors.mutedText,
+				TextSize = if layout.isShortLandscape then 9 else 10,
+				TextXAlignment = Enum.TextXAlignment.Right,
+				ZIndex = uiBase + 13,
+			}) else e("TextLabel", {
+				AnchorPoint = Vector2.new(1, 0),
+				BackgroundTransparency = 1,
+				Font = Enum.Font.GothamBold,
+				Position = UDim2.new(1, 0, 0, if layout.isShortLandscape then 6 else 8),
+				Size = UDim2.fromOffset(if isGolden then 70 else 66, if layout.isShortLandscape then 14 else 15),
+				Text = if isGolden then "Hatch-only" else "Hatch-only",
+				TextColor3 = Color3.fromRGB(160, 140, 100),
+				TextSize = if layout.isShortLandscape then 9 else 10,
+				TextXAlignment = Enum.TextXAlignment.Right,
+				ZIndex = uiBase + 13,
+			}),
+			BuyBtn = if isBuyable then e("TextButton", {
+				AnchorPoint = Vector2.new(1, 1),
+				AutoButtonColor = canAfford,
+				BackgroundColor3 = if canAfford then Theme.colors.coral else Color3.fromRGB(180, 180, 180),
+				BorderSizePixel = 0,
+				Font = Enum.Font.GothamBold,
+				Position = UDim2.new(1, 0, 1, if layout.isShortLandscape then -4 else -5),
+				Size = UDim2.fromOffset(if layout.isShortLandscape then 40 else 46, if layout.isShortLandscape then 22 else 25),
+				Text = "Buy",
+				TextColor3 = Color3.new(1, 1, 1),
+				TextSize = if layout.isShortLandscape then 10 else 11,
+				ZIndex = uiBase + 13,
+				[React.Event.Activated] = if canAfford then function()
+					onBuyFamily(familyDef.id)
+				end else nil,
+			}, {
+				Corner = e("UICorner", { CornerRadius = Theme.corner }),
+			}) else nil,
+			Divider = if i < #PrototypeConfig.families then e("Frame", {
+				AnchorPoint = Vector2.new(0, 1),
+				BackgroundColor3 = Theme.colors.panel,
+				BackgroundTransparency = 0.6,
+				BorderSizePixel = 0,
+				Position = UDim2.new(0, 0, 1, 0),
+				Size = UDim2.new(1, 0, 0, 1),
+				ZIndex = uiBase + 13,
+			}) else nil,
+		})
+	end
+
+	local familiesCanvasH = #PrototypeConfig.families * rowH
+
+	-- ── DUCKDEX TAB content ───────────────────────────────────────────────
+	local duckdexRows = {}
+	local duckdexCursorY = 0
+
+	-- Collection header
+	local progressBarW = contentW - 70
+	local progressFill = math.max(1, math.floor(progressBarW * ownedCount / 6))
+
+	duckdexRows.CollectionHeader = e("Frame", {
+		AnchorPoint = Vector2.new(0, 0),
+		BackgroundTransparency = 1,
+		Position = UDim2.fromOffset(0, duckdexCursorY),
+		Size = UDim2.fromOffset(contentW, if layout.isShortLandscape then 30 else 34),
+		ZIndex = uiBase + 13,
+	}, {
+		PctLabel = e("TextLabel", {
+			BackgroundTransparency = 1,
+			Font = Enum.Font.GothamBold,
+			Position = UDim2.fromOffset(0, 0),
+			Size = UDim2.fromOffset(60, if layout.isShortLandscape then 14 else 16),
+			Text = string.format("%d%%", collectionPct),
+			TextColor3 = Theme.colors.coral,
+			TextSize = if layout.isShortLandscape then 12 else 14,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			ZIndex = uiBase + 13,
+		}),
+		ProgressBg = e("Frame", {
+			AnchorPoint = Vector2.new(0, 0.5),
+			BackgroundColor3 = Color3.fromRGB(220, 215, 205),
+			BorderSizePixel = 0,
+			Position = UDim2.new(0, 64, 0.5, 0),
+			Size = UDim2.fromOffset(progressBarW, if layout.isShortLandscape then 6 else 7),
+			ZIndex = uiBase + 13,
+		}, {
+			Corner = e("UICorner", { CornerRadius = UDim.new(1, 0) }),
+			Fill = e("Frame", {
+				BackgroundColor3 = Theme.colors.coral,
+				BorderSizePixel = 0,
+				Size = UDim2.fromOffset(progressFill, if layout.isShortLandscape then 6 else 7),
+				ZIndex = uiBase + 13,
+			}, {
+				Corner = e("UICorner", { CornerRadius = UDim.new(1, 0) }),
+			}),
+		}),
+	})
+
+	duckdexCursorY += if layout.isShortLandscape then 34 else 38
+
+	-- Family rows (6 obtainable + golden locked)
+	for i, familyDef in PrototypeConfig.families do
+		local isGolden = familyDef.id == "golden"
+		local owned = ownedFamilies[familyDef.id] == true
+		local rc = rarityColor(familyDef.rarity)
+		local duckdexRowH = if layout.isShortLandscape then 28 else 32
+
+		duckdexRows["Family" .. i] = e("Frame", {
+			AnchorPoint = Vector2.new(0, 0),
+			BackgroundTransparency = 1,
+			Position = UDim2.fromOffset(0, duckdexCursorY),
+			Size = UDim2.fromOffset(contentW, duckdexRowH),
+			ZIndex = uiBase + 13,
+		}, {
+			CheckOrLock = e("TextLabel", {
+				BackgroundTransparency = 1,
+				Font = Enum.Font.GothamBold,
+				Position = UDim2.fromOffset(0, 0),
+				Size = UDim2.fromOffset(16, duckdexRowH),
+				Text = if isGolden then "🔒" elseif owned then "✓" else "○",
+				TextColor3 = if owned then Theme.colors.coral elseif isGolden then Color3.fromRGB(160, 140, 100) else Color3.fromRGB(180, 180, 180),
+				TextSize = if layout.isShortLandscape then 10 else 11,
+				TextXAlignment = Enum.TextXAlignment.Center,
+				ZIndex = uiBase + 13,
+			}),
+			NameLabel = e("TextLabel", {
+				BackgroundTransparency = 1,
+				Font = if owned then Enum.Font.GothamBold else Enum.Font.Gotham,
+				Position = UDim2.fromOffset(22, 0),
+				Size = UDim2.fromOffset(contentW - 22 - 56, duckdexRowH),
+				Text = familyDef.displayName,
+				TextColor3 = if isGolden then Color3.fromRGB(150, 150, 150) else Theme.colors.text,
+				TextSize = if layout.isShortLandscape then 10 else 11,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				TextYAlignment = Enum.TextYAlignment.Center,
+				ZIndex = uiBase + 13,
+			}),
+			RarityBadge = e("TextLabel", {
+				AnchorPoint = Vector2.new(1, 0.5),
+				BackgroundColor3 = rc,
+				BackgroundTransparency = if isGolden then 0.5 else 0.15,
+				Font = Enum.Font.Gotham,
+				Position = UDim2.new(1, 0, 0.5, 0),
+				Size = UDim2.fromOffset(52, if layout.isShortLandscape then 13 else 14),
+				Text = rarityLabel(familyDef.rarity),
+				TextColor3 = Color3.new(1, 1, 1),
+				TextSize = if layout.isShortLandscape then 8 else 9,
+				TextXAlignment = Enum.TextXAlignment.Center,
+				ZIndex = uiBase + 13,
+			}, {
+				Corner = e("UICorner", { CornerRadius = UDim.new(1, 0) }),
+			}),
+		})
+
+		duckdexCursorY += duckdexRowH
+	end
+
+	-- Milestone rows
+	duckdexCursorY += 6
+
+	duckdexRows.MilestoneHeader = e("TextLabel", {
+		AnchorPoint = Vector2.new(0, 0),
+		BackgroundTransparency = 1,
+		Font = Enum.Font.GothamBold,
+		Position = UDim2.fromOffset(0, duckdexCursorY),
+		Size = UDim2.fromOffset(contentW, if layout.isShortLandscape then 14 else 16),
+		Text = "Milestones",
+		TextColor3 = Theme.colors.mutedText,
+		TextSize = if layout.isShortLandscape then 9 else 10,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		ZIndex = uiBase + 13,
+	})
+
+	duckdexCursorY += if layout.isShortLandscape then 18 else 20
+
+	for i, reward in PrototypeConfig.collectionRewards do
+		local claimed = false
+
+		for _, claimedId in farmState.collectionRewardsClaimed do
+			if claimedId == reward.id then
+				claimed = true
+				break
+			end
+		end
+
+		local reachable = ownedCount >= reward.familiesRequired
+		local parts = {}
+
+		if reward.rewardCoins > 0 then
+			table.insert(parts, string.format("+%d coins", reward.rewardCoins))
+		end
+
+		if reward.rewardTreat > 0 then
+			table.insert(parts, string.format("Treat ×%d", reward.rewardTreat))
+		end
+
+		if reward.rewardMysteryBox > 0 then
+			table.insert(parts, string.format("Box ×%d", reward.rewardMysteryBox))
+		end
+
+		local rewardText = table.concat(parts, "  ")
+
+		duckdexRows["Milestone" .. i] = e("Frame", {
+			AnchorPoint = Vector2.new(0, 0),
+			BackgroundTransparency = 1,
+			Position = UDim2.fromOffset(0, duckdexCursorY),
+			Size = UDim2.fromOffset(contentW, milestoneRowH),
+			ZIndex = uiBase + 13,
+		}, {
+			Check = e("TextLabel", {
+				BackgroundTransparency = 1,
+				Font = Enum.Font.GothamBold,
+				Position = UDim2.fromOffset(0, 0),
+				Size = UDim2.fromOffset(16, milestoneRowH),
+				Text = if claimed then "✓" else "○",
+				TextColor3 = if claimed then Theme.colors.coral elseif reachable then Theme.colors.coin else Color3.fromRGB(180, 180, 180),
+				TextSize = if layout.isShortLandscape then 10 else 11,
+				TextXAlignment = Enum.TextXAlignment.Center,
+				TextYAlignment = Enum.TextYAlignment.Center,
+				ZIndex = uiBase + 13,
+			}),
+			PctLabel = e("TextLabel", {
+				BackgroundTransparency = 1,
+				Font = Enum.Font.GothamBold,
+				Position = UDim2.fromOffset(22, 0),
+				Size = UDim2.fromOffset(28, milestoneRowH),
+				Text = string.format("%d%%", math.floor(reward.familiesRequired / 6 * 100)),
+				TextColor3 = if reachable then Theme.colors.text else Color3.fromRGB(160, 160, 160),
+				TextSize = if layout.isShortLandscape then 9 else 10,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				TextYAlignment = Enum.TextYAlignment.Center,
+				ZIndex = uiBase + 13,
+			}),
+			RewardLabel = e("TextLabel", {
+				AnchorPoint = Vector2.new(1, 0),
+				BackgroundTransparency = 1,
+				Font = Enum.Font.Gotham,
+				Position = UDim2.new(1, 0, 0, 0),
+				Size = UDim2.fromOffset(contentW - 54, milestoneRowH),
+				Text = rewardText,
+				TextColor3 = if claimed then Theme.colors.mutedText elseif reachable then Theme.colors.coin else Color3.fromRGB(160, 160, 160),
+				TextSize = if layout.isShortLandscape then 9 else 10,
+				TextXAlignment = Enum.TextXAlignment.Right,
+				TextYAlignment = Enum.TextYAlignment.Center,
+				ZIndex = uiBase + 13,
+			}),
+		})
+
+		duckdexCursorY += milestoneRowH
+	end
+
+	local duckdexCanvasH = duckdexCursorY
+
+	return e("Frame", {
+		Active = true,
+		BackgroundTransparency = 1,
+		Size = UDim2.fromScale(1, 1),
+		ZIndex = uiBase + 11,
+	}, {
+		Backdrop = e("TextButton", {
+			Active = true,
+			AutoButtonColor = false,
+			BackgroundColor3 = black,
+			BackgroundTransparency = 0.55,
+			Size = UDim2.fromScale(1, 1),
+			Text = "",
+			ZIndex = uiBase + 11,
+			[React.Event.Activated] = onClose,
+		}),
+		Panel = e("Frame", {
+			AnchorPoint = Vector2.new(1, 1),
+			BackgroundColor3 = Color3.new(1, 1, 1),
+			BorderSizePixel = 0,
+			-- sits just above the Upgrades button on the right side
+			Position = UDim2.new(1, -layout.sideMargin, 1, -(layout.actionBottom + layout.actionButtonHeight + layout.progressionStackHeight + 44)),
+			Size = UDim2.fromOffset(panelW, panelH),
+			ZIndex = uiBase + 12,
+		}, {
+			Corner = e("UICorner", { CornerRadius = Theme.corner }),
+			Stroke = e("UIStroke", { Color = Theme.colors.panel, Thickness = 1, Transparency = 0.3 }),
+			Header = e("Frame", {
+				BackgroundTransparency = 1,
+				Size = UDim2.new(1, 0, 0, headerH),
+				ZIndex = uiBase + 12,
+			}, {
+				Title = e("TextLabel", {
+					AnchorPoint = Vector2.new(0, 0.5),
+					BackgroundTransparency = 1,
+					Font = Enum.Font.GothamBold,
+					Position = UDim2.new(0, padX, 0.5, 0),
+					Size = UDim2.new(1, -padX * 2 - 32, 1, 0),
+					Text = "Duck Shop",
+					TextColor3 = Theme.colors.text,
+					TextSize = if layout.isShortLandscape then 12 else 14,
+					TextXAlignment = Enum.TextXAlignment.Left,
+					ZIndex = uiBase + 12,
+				}),
+				CloseBtn = e("TextButton", {
+					AnchorPoint = Vector2.new(1, 0.5),
+					AutoButtonColor = true,
+					BackgroundColor3 = Color3.fromRGB(220, 215, 205),
+					BorderSizePixel = 0,
+					Font = Enum.Font.GothamBold,
+					Position = UDim2.new(1, -10, 0.5, 0),
+					Size = UDim2.fromOffset(22, 22),
+					Text = "×",
+					TextColor3 = Theme.colors.mutedText,
+					TextSize = if layout.isShortLandscape then 12 else 14,
+					ZIndex = uiBase + 12,
+					[React.Event.Activated] = onClose,
+				}, {
+					Corner = e("UICorner", { CornerRadius = UDim.new(1, 0) }),
+				}),
+			}),
+			Tabs = e("Frame", {
+				AnchorPoint = Vector2.new(0, 0),
+				BackgroundColor3 = Color3.fromRGB(240, 237, 228),
+				BorderSizePixel = 0,
+				Position = UDim2.new(0, 0, 0, headerH),
+				Size = UDim2.new(1, 0, 0, tabH),
+				ZIndex = uiBase + 12,
+			}, {
+				BuyTab = e("TextButton", {
+					AutoButtonColor = false,
+					BackgroundColor3 = if not duckdexTab then Color3.new(1, 1, 1) else Color3.fromRGB(240, 237, 228),
+					BorderSizePixel = 0,
+					Font = Enum.Font.GothamBold,
+					Position = UDim2.fromOffset(0, 0),
+					Size = UDim2.new(0.5, 0, 1, 0),
+					Text = "Families",
+					TextColor3 = if not duckdexTab then Theme.colors.coral else Theme.colors.mutedText,
+					TextSize = if layout.isShortLandscape then 10 else 11,
+					ZIndex = uiBase + 12,
+					[React.Event.Activated] = if duckdexTab then onToggleTab else nil,
+				}),
+				DuckdexTab = e("TextButton", {
+					AutoButtonColor = false,
+					BackgroundColor3 = if duckdexTab then Color3.new(1, 1, 1) else Color3.fromRGB(240, 237, 228),
+					BorderSizePixel = 0,
+					Font = Enum.Font.GothamBold,
+					Position = UDim2.new(0.5, 0, 0, 0),
+					Size = UDim2.new(0.5, 0, 1, 0),
+					Text = string.format("Duckdex  %d/6", ownedCount),
+					TextColor3 = if duckdexTab then Theme.colors.coral else Theme.colors.mutedText,
+					TextSize = if layout.isShortLandscape then 10 else 11,
+					ZIndex = uiBase + 12,
+					[React.Event.Activated] = if not duckdexTab then onToggleTab else nil,
+				}),
+				Divider = e("Frame", {
+					AnchorPoint = Vector2.new(0.5, 1),
+					BackgroundColor3 = Theme.colors.panel,
+					BackgroundTransparency = 0.5,
+					BorderSizePixel = 0,
+					Position = UDim2.new(0.5, 0, 1, 0),
+					Size = UDim2.new(1, 0, 0, 1),
+					ZIndex = uiBase + 12,
+				}),
+			}),
+			Content = e("ScrollingFrame", {
+				AnchorPoint = Vector2.new(0, 0),
+				BackgroundTransparency = 1,
+				BorderSizePixel = 0,
+				CanvasSize = UDim2.fromOffset(0, if duckdexTab then duckdexCanvasH else familiesCanvasH),
+				Position = UDim2.new(0, padX, 0, headerH + tabH + 6),
+				ScrollBarImageColor3 = Theme.colors.panel,
+				ScrollBarThickness = 3,
+				ScrollingDirection = Enum.ScrollingDirection.Y,
+				Size = UDim2.new(1, -padX * 2, 1, -(headerH + tabH + 8)),
+				ZIndex = uiBase + 12,
+			}, if duckdexTab then duckdexRows else familyRows),
+		}),
+	})
+end
+
 -- Centered modal overlay for music, sound, and reduced-motion settings.
 local function createStarterChoiceOverlay(
 	layout: LayoutMetrics,
@@ -5727,6 +6204,8 @@ local function FarmScreen()
 	local soundEnabled, setSoundEnabled = React.useState(true)
 	local reducedMotion, setReducedMotion = React.useState(false)
 	local starterChoiceOpen, setStarterChoiceOpen = React.useState(false)
+	local buyDuckPanelOpen, setBuyDuckPanelOpen = React.useState(false)
+	local duckdexTabOpen, setDuckdexTabOpen = React.useState(false)
 	local previousStateRef = React.useRef(nil :: FarmState?)
 	local feedbackIdRef = React.useRef(0)
 	local scenePointerHandlerRef = React.useRef(nil :: ((Vector2, number?) -> ())?)
@@ -6994,15 +7473,20 @@ local function FarmScreen()
 				BuyDuck = e(createProgressionCard, {
 					title = PrototypeConfig.duckPurchase.displayName,
 					lineOne = formatCostLine(farmState.duckPurchaseCost, farmState.coins, layout.isShortLandscape),
-					lineTwo = string.format("Ducks: %d (+1)", farmState.duckCount),
-					buttonText = "Buy",
-					canActivate = canBuyDuck,
+					lineTwo = string.format("Ducks: %d  |  Families", farmState.duckCount),
+					buttonText = "Browse",
+					canActivate = not isViewingOtherFarm and not tutorialVisible or canBuyDuck,
 					layoutOrder = 2,
 					width = layout.progressionCardWidth,
 					height = layout.progressionCardHeight,
 					onActivated = function()
-						actionEvent:FireServer(RemoteProtocol.actions.buyDuck)
-						advanceTutorial("buy_duck")
+						if activeTutorialStepId == "buy_duck" and canBuyDuck then
+							-- Tutorial fast-path: buy classic_yellow directly then advance
+							actionEvent:FireServer(RemoteProtocol.actions.buyDuck)
+							advanceTutorial("buy_duck")
+						else
+							setBuyDuckPanelOpen(true)
+						end
 					end,
 				}),
 			})
@@ -7116,6 +7600,26 @@ local function FarmScreen()
 			duckBoxCandidates,
 			function(candidateIndex: number)
 				actionEvent:FireServer(RemoteProtocol.actions.pickDuckBoxCandidate, { candidateIndex = candidateIndex })
+			end
+		)
+		else nil
+
+	-- Buy Duck family-selector / Duckdex panel
+	children.BuyDuckFamilyPanel = if buyDuckPanelOpen and upgradesVisible and not isViewingOtherFarm
+		then createBuyDuckFamilyPanel(
+			farmState,
+			layout,
+			duckdexTabOpen,
+			function(familyId: string)
+				actionEvent:FireServer(RemoteProtocol.actions.buyDuck, { familyId = familyId })
+				advanceTutorial("buy_duck")
+				setBuyDuckPanelOpen(false)
+			end,
+			function()
+				setDuckdexTabOpen(function(v) return not v end)
+			end,
+			function()
+				setBuyDuckPanelOpen(false)
 			end
 		)
 		else nil

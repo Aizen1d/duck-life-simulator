@@ -1645,9 +1645,45 @@ local function buyEggValueUpgrade(state: PlayerState)
 	markSaveDirty(state)
 end
 
-local function buyDuck(state: PlayerState)
+local function buyDuck(state: PlayerState, payload: any)
 	local duckPurchase = PrototypeConfig.duckPurchase
-	local duckPurchaseCost = getDuckPurchaseCost(state)
+	local duckPurchaseCost: number
+	local duckFamily = "classic_yellow"
+	local duckRarity = "common"
+
+	local requestedFamilyId: string? = nil
+
+	if typeof(payload) == "table" then
+		local pt = payload :: {[string]: any}
+
+		if typeof(pt.familyId) == "string" then
+			requestedFamilyId = pt.familyId
+		end
+	end
+
+	if requestedFamilyId then
+		local matched = false
+
+		for _, familyDef in PrototypeConfig.families do
+			if familyDef.id == requestedFamilyId then
+				if familyDef.buyCost == nil then
+					return
+				end
+
+				duckPurchaseCost = familyDef.buyCost
+				duckFamily = familyDef.id
+				duckRarity = familyDef.rarity
+				matched = true
+				break
+			end
+		end
+
+		if not matched then
+			return
+		end
+	else
+		duckPurchaseCost = getDuckPurchaseCost(state)
+	end
 
 	if duckPurchaseCost <= 0 or state.coins < duckPurchaseCost then
 		return
@@ -1656,7 +1692,7 @@ local function buyDuck(state: PlayerState)
 	state.coins -= duckPurchaseCost
 
 	for _ = 1, duckPurchase.duckIncrease do
-		addDuck(state)
+		grantDuckWithFamily(state, duckFamily, duckRarity)
 	end
 
 	grantQuestProgress(state, QUEST_BUY_DUCKS_ID, duckPurchase.duckIncrease)
@@ -2601,7 +2637,7 @@ local function onAction(player: Player, actionName: any, payload: any?)
 	elseif actionName == RemoteProtocol.actions.buyEggValueUpgrade then
 		buyEggValueUpgrade(state)
 	elseif actionName == RemoteProtocol.actions.buyDuck then
-		buyDuck(state)
+		buyDuck(state, payload)
 		if #state.ducks >= 2 then
 			tryAwardBadge(player, badgeConfig.firstDuck)
 		end

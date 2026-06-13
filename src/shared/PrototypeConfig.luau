@@ -585,6 +585,46 @@ local PrototypeConfig = {
 
 	-- Fixed Starter Choice Duck options shown after guide completion (index into families list).
 	starterChoiceFamilies = { "mallard_green", "choco_brown", "snowy_white" },
+
+	-- Phase 6 (Hatching) — egg types as inventory items. Each egg hatches after hatchSeconds into
+	-- a duck whose family is rolled from `odds` (rarity → family uses the same mapping as the
+	-- Mystery Duck Box). Odds percentages must sum to 100. Eggs are bought with coins or earned
+	-- from quests/daily/minigames/events; they are NEVER sold for Robux (hard rule, see ROADMAP).
+	-- Optional pity: after `pityThreshold` hatches of this egg without rolling `pityFloor` or
+	-- better, the next hatch is forced to `pityFloor` or better. Rarity rank for "or better" is
+	-- common < uncommon < rare < epic < legendary. Starter numbers — tune after first data.
+	eggTypes = {
+		{
+			id = "plain",
+			displayName = "Plain Egg",
+			buyCost = 50,
+			hatchSeconds = 300,
+			odds = { common = 75, uncommon = 25 },
+		},
+		{
+			id = "speckled",
+			displayName = "Speckled Egg",
+			buyCost = 150,
+			hatchSeconds = 1800,
+			odds = { uncommon = 60, rare = 30, epic = 10 },
+			pityThreshold = 8,
+			pityFloor = "rare",
+		},
+		{
+			id = "golden",
+			displayName = "Golden Egg",
+			buyCost = 600,
+			hatchSeconds = 14400,
+			odds = { rare = 55, epic = 35, legendary = 10 },
+			pityThreshold = 10,
+			pityFloor = "legendary",
+		},
+	},
+
+	-- Incubator V0: a single hatch slot. Phase 8 raises slotCount via farm level.
+	incubator = {
+		slotCount = 1,
+	},
 }
 
 return PrototypeConfig

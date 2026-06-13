@@ -168,8 +168,22 @@ Object:
 	},
 	unlockLadder = true,
 	funnelMilestones = {},  -- set of fired analytics first-moment event names, e.g. funnel_first_sell = true
+	eggInventory = {  -- Phase 6 (schema 13): owned eggs by type; festival reserved, not in V0
+		plain = 0,
+		speckled = 0,
+		golden = 0,
+	},
+	incubatorSlots = {  -- Phase 6: 0..incubator.slotCount active slots; empty when nothing is incubating
+		-- { eggType = "speckled", finishUtc = 1718300000 },
+	},
+	hatchPity = {  -- Phase 6: hatches since the last pity-floor-or-better roll, per pity egg type
+		speckled = 0,
+		golden = 0,
+	},
 }
 ```
+
+`eggInventory` counts are finite non-negative integers, one key per `eggTypes` id. `incubatorSlots` is an array capped at `incubator.slotCount` (V0 = `1`); each entry stores the egg type id and a server-derived `finishUtc` (`os.time` at start + the egg's `hatchSeconds`), validated against forged or future-dated values on load like every other timer. The hatch rarity is rolled server-side at collect time, not stored in the slot, so the result cannot be inspected or save-scummed before the reveal. `hatchPity` holds one counter per egg type that has a `pityThreshold`; it increments on each hatch of that type and resets to `0` when the roll lands on the egg's `pityFloor` or better (rank: common < uncommon < rare < epic < legendary).
 
 `funnelMilestones` is a set keyed by analytics event name (only `true` values are stored). It exists solely to fire each `funnel_*`/`social_*` first-moment event once per profile lifetime; it never affects gameplay. It is the only save field analytics may write.
 
@@ -263,7 +277,8 @@ Every saved object must include `schemaVersion`.
 
 For V0:
 
-- `schemaVersion = 12`
+- `schemaVersion = 13`
+- Existing `schemaVersion = 12` saves load with empty `eggInventory` (all egg counts `0`), no `incubatorSlots`, and zeroed `hatchPity` counters, so pre-hatching profiles start the Hatching Update with an empty incubator and no pity progress.
 - Existing `schemaVersion = 11` saves load with an empty `funnelMilestones` set, so a returning player's already-passed first moments (first sell, first care, etc.) will not re-fire — except the very next time each action happens after the update, which logs one trailing funnel event per milestone. This is a one-time, harmless backfill at the schema-12 boundary.
 - Existing `schemaVersion = 10` saves load with per-duck `family = "classic_yellow"`/`rarity = "common"`, empty `collectionRewardsClaimed`, `starterChoiceCompleted = false` (triggering the Starter Choice prompt once), and `mysteryDuckBoxes = 0`.
 - Existing `schemaVersion = 9` saves load with `unlockLadder = false`, keeping every feature unlocked for pre-ladder profiles.

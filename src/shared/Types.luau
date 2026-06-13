@@ -133,6 +133,20 @@ export type MysteryDuckBoxDefinition = {
 	epicChance: number,
 }
 
+export type EggTypeDefinition = {
+	id: string,
+	displayName: string,
+	buyCost: number,
+	hatchSeconds: number,
+	odds: {[string]: number},
+	pityThreshold: number?,
+	pityFloor: string?,
+}
+
+export type IncubatorDefinition = {
+	slotCount: number,
+}
+
 export type UpgradeDefinition = {
 	id: string,
 	displayName: string,
@@ -393,6 +407,8 @@ export type PrototypeConfig = {
 	collectionRewards: {CollectionRewardDefinition},
 	mysteryDuckBox: MysteryDuckBoxDefinition,
 	starterChoiceFamilies: {string},
+	eggTypes: {EggTypeDefinition},
+	incubator: IncubatorDefinition,
 }
 
 return {}

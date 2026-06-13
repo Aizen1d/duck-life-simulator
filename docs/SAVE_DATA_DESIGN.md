@@ -10,6 +10,26 @@ Save Data V0 is implemented in `src/server/PlayerDataService.luau` and integrate
 
 The current playable prototype loads player data on join, autosaves dirty state about `3` seconds after meaningful changes, retries failed autosaves after a longer delay, saves on leave, attempts final saves on shutdown, and includes Studio-only tester controls guarded by `RunService:IsStudio()`. The visible farm-screen save status indicator has been removed; save verification should use Studio Output logs and rejoin checks. The current saved schema is `schemaVersion = 10` because the Feature Unlock Ladder flag (`unlockLadder`, `true` only for profiles created after the ladder shipped) now persists alongside Daily Quests V0 progress (day stamp, three slot progress values, and the all-complete bonus flag), the Daily Streak V1 `streakDay` position, the `lastSeenUtc` timestamp for Offline Progress V0, Toy inventory, `lastDailyClaimDay`, Duck Feed, Premium Feed, Treat, Pillow, and Quest V0/V1/V2 progress. On load, offline egg production is granted from `lastSeenUtc` at `50%` of the online rate, capped at `2` hours.
 
+### Planned: schemaVersion = 11 (Phase 5 — Duck Families and Duckdex)
+
+Three new per-duck fields and four new global fields. The schema bump lets the load path default missing fields cleanly for all pre-Phase-5 saves.
+
+**Per-duck additions:**
+- `family` (string): the duck's visual family ID. Valid values: `"classic_yellow"`, `"mallard_green"`, `"choco_brown"`, `"snowy_white"`, `"blossom_pink"`, `"twilight_blue"`, `"golden"`. Missing or invalid → `"classic_yellow"` (migration default for all existing ducks).
+- `rarity` (string): `"common"`, `"uncommon"`, `"rare"`, `"epic"`, `"legendary"`. Missing or invalid → `"common"`.
+
+**New global fields:**
+- `collectionRewardsClaimed` (array of strings): milestone IDs already claimed — `"25pct"`, `"50pct"`, `"75pct"`, `"100pct"`. Missing → `{}`.
+- `starterChoiceCompleted` (bool): `true` once the player has completed the Starter Choice Duck modal. Fresh profiles go through the guide; existing profiles (loaded after Phase 5 ships) see the modal on their first rejoin. Missing or non-bool → `false`.
+- `mysteryDuckBoxes` (integer ≥ 0): count of unopened Mystery Duck Boxes in inventory. Missing → `0`.
+
+**Validation additions:**
+- duck `family`: string, must be a known family ID; unknown → `"classic_yellow"`.
+- duck `rarity`: string, must be a known rarity; unknown → `"common"`.
+- `collectionRewardsClaimed`: array; unknown or non-array → `{}`.
+- `starterChoiceCompleted`: bool; non-bool → `false`.
+- `mysteryDuckBoxes`: finite integer ≥ `0`.
+
 ## Official Roblox References Checked
 
 - [Data stores](https://create.roblox.com/docs/cloud-services/data-stores)
@@ -88,7 +108,7 @@ Object:
 
 ```lua
 {
-	schemaVersion = 10,
+	schemaVersion = 11,  -- v10: unlockLadder + dailyQuests + streakDay + lastSeenUtc + toy. v11: per-duck family/rarity, collectionRewardsClaimed, starterChoiceCompleted, mysteryDuckBoxes.
 	coins = 0,
 	eggs = 0,
 	duckFeed = 0,
@@ -105,8 +125,13 @@ Object:
 			name = "Waddles",
 			level = 1,
 			xp = 0,
+			family = "classic_yellow",
+			rarity = "common",
 		},
 	},
+	collectionRewardsClaimed = {},
+	starterChoiceCompleted = false,
+	mysteryDuckBoxes = 0,
 	quests = {
 		collect_eggs = {
 			level = 1,

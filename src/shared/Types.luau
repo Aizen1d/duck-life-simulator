@@ -19,6 +19,8 @@ export type DuckState = {
 	careRequestKind: string,
 	careRequestText: string,
 	canCare: boolean,
+	family: string,
+	rarity: string,
 }
 
 export type QuestState = {
@@ -97,6 +99,38 @@ export type FarmState = {
 	farmOwnerName: string,
 	farmOwnerDisplayName: string,
 	farmVisits: {FarmVisitSummary},
+	collectionRewardsClaimed: {string},
+	starterChoiceCompleted: boolean,
+	mysteryDuckBoxes: number,
+	pendingDuckBoxCandidates: {DuckBoxCandidate}?,
+}
+
+export type DuckBoxCandidate = {
+	family: string,
+	rarity: string,
+	displayName: string,
+}
+
+export type DuckFamilyDefinition = {
+	id: string,
+	displayName: string,
+	rarity: string,
+	eggBonus: number,
+	buyCost: number?,
+}
+
+export type CollectionRewardDefinition = {
+	id: string,
+	familiesRequired: number,
+	rewardCoins: number,
+	rewardTreat: number,
+	rewardMysteryBox: number,
+}
+
+export type MysteryDuckBoxDefinition = {
+	uncommonChance: number,
+	rareChance: number,
+	epicChance: number,
 }
 
 export type UpgradeDefinition = {
@@ -355,6 +389,10 @@ export type PrototypeConfig = {
 	dailyQuests: DailyQuestsDefinition,
 	minigames: MinigamesDefinition,
 	badges: BadgesDefinition,
+	families: {DuckFamilyDefinition},
+	collectionRewards: {CollectionRewardDefinition},
+	mysteryDuckBox: MysteryDuckBoxDefinition,
+	starterChoiceFamilies: {string},
 }
 
 return {}

@@ -554,6 +554,37 @@ local PrototypeConfig = {
 		level5Duck = 0,
 		streak7 = 0,
 	},
+
+	-- Duck families in display order. buyCost = nil means hatch-only (not in the shop).
+	-- eggBonus is additive per duck: 0.05 = +5% production on top of the level bonus.
+	families = {
+		{ id = "classic_yellow", displayName = "Classic Yellow", rarity = "common",    eggBonus = 0,    buyCost = 25 },
+		{ id = "mallard_green",  displayName = "Mallard Green",  rarity = "common",    eggBonus = 0,    buyCost = 40 },
+		{ id = "choco_brown",    displayName = "Choco Brown",    rarity = "uncommon",  eggBonus = 0.05, buyCost = 90 },
+		{ id = "snowy_white",    displayName = "Snowy White",    rarity = "uncommon",  eggBonus = 0.05, buyCost = 90 },
+		{ id = "blossom_pink",   displayName = "Blossom Pink",   rarity = "rare",      eggBonus = 0.10, buyCost = nil },
+		{ id = "twilight_blue",  displayName = "Twilight Blue",  rarity = "epic",      eggBonus = 0.20, buyCost = nil },
+		{ id = "golden",         displayName = "Golden",         rarity = "legendary", eggBonus = 0.35, buyCost = nil },
+	},
+
+	-- Duckdex collection milestones. familiesRequired is out of 6 (Golden excluded; it is hatch-only in Phase 6).
+	collectionRewards = {
+		{ id = "25pct",  familiesRequired = 2, rewardCoins = 30,  rewardTreat = 0, rewardMysteryBox = 0 },
+		{ id = "50pct",  familiesRequired = 3, rewardCoins = 50,  rewardTreat = 0, rewardMysteryBox = 1 },
+		{ id = "75pct",  familiesRequired = 5, rewardCoins = 100, rewardTreat = 2, rewardMysteryBox = 0 },
+		{ id = "100pct", familiesRequired = 6, rewardCoins = 200, rewardTreat = 3, rewardMysteryBox = 0 },
+	},
+
+	-- Mystery Duck Box drop odds (must sum to 100). Uncommon split is 50/50 choco_brown/snowy_white.
+	-- Rare = blossom_pink; Epic = twilight_blue. Legendary is not in the V0 box pool.
+	mysteryDuckBox = {
+		uncommonChance = 60,
+		rareChance = 30,
+		epicChance = 10,
+	},
+
+	-- Fixed Starter Choice Duck options shown after guide completion (index into families list).
+	starterChoiceFamilies = { "mallard_green", "choco_brown", "snowy_white" },
 }
 
 return PrototypeConfig

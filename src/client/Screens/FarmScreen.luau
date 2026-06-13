@@ -274,6 +274,16 @@ local TUTORIAL_STEPS: {TutorialStep} = {
 		title = "Help ducks",
 		body = "When a duck asks for help with Pet me?, Hungry?, Sleepy?, or Dirty?, tap that duck and use its action.",
 	},
+	{
+		id = "streak",
+		title = "Daily Streak",
+		body = "Come back every day to keep your streak going. Each day you check in earns more coins. Day 7 earns a Treat too! Missing 1-3 days pauses your streak; longer gaps restart it.",
+	},
+	{
+		id = "quests",
+		title = "Daily Quests",
+		body = "Three new goals appear every day at the top of your quest list. Collect eggs, sell for coins, help ducks — complete all three for a daily bonus chest!",
+	},
 }
 local DUCK_SLOTS = {
 	{ -24, -18, 1 },
@@ -1136,7 +1146,289 @@ local function formatQuestCompleteFeedback(quest: QuestState): string
 	return "Quest " .. rewardSummary
 end
 
-local function createQuestPanel(farmState: FarmState, layout: LayoutMetrics, isExpanded: boolean, onActivated: () -> ())
+-- Centered modal overlay for music, sound, and reduced-motion settings.
+local function createSettingsPanel(
+	layout: LayoutMetrics,
+	musicEnabled: boolean,
+	soundEnabled: boolean,
+	reducedMotion: boolean,
+	onClose: () -> (),
+	onToggleMusic: () -> (),
+	onToggleSound: () -> (),
+	onToggleReducedMotion: () -> ()
+)
+	local panelWidth = if layout.isShortLandscape then 236 elseif layout.isCompact then 252 else 276
+	local padX = 16
+	local padY = 12
+	local titleHeight = if layout.isShortLandscape then 20 else 24
+	local dividerY = padY + titleHeight + 8
+	local rowHeight = if layout.isShortLandscape then 32 else 38
+	local toggleW = if layout.isShortLandscape then 44 else 52
+	local toggleH = if layout.isShortLandscape then 22 else 26
+	local panelHeight = dividerY + 2 + rowHeight * 3 + padY
+
+	local function makeRow(label: string, enabled: boolean, onToggle: () -> (), rowIndex: number)
+		local rowY = dividerY + 2 + (rowIndex - 1) * rowHeight
+		return e("Frame", {
+			BackgroundTransparency = 1,
+			Position = UDim2.fromOffset(padX, rowY),
+			Size = UDim2.new(1, -padX * 2, 0, rowHeight),
+			ZIndex = Theme.zIndex.ui + 16,
+		}, {
+			Label = e("TextLabel", {
+				BackgroundTransparency = 1,
+				Font = Enum.Font.GothamSemibold,
+				Position = UDim2.fromOffset(0, 0),
+				Size = UDim2.new(1, -(toggleW + 8), 1, 0),
+				Text = label,
+				TextColor3 = Theme.colors.text,
+				TextSize = if layout.isShortLandscape then 11 else 13,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				ZIndex = Theme.zIndex.ui + 16,
+			}),
+			Toggle = e("TextButton", {
+				AnchorPoint = Vector2.new(1, 0.5),
+				AutoButtonColor = true,
+				BackgroundColor3 = if enabled then Theme.colors.coral else Color3.fromRGB(197, 190, 178),
+				BorderSizePixel = 0,
+				Font = Enum.Font.GothamBold,
+				Position = UDim2.new(1, 0, 0.5, 0),
+				Size = UDim2.fromOffset(toggleW, toggleH),
+				Text = if enabled then "On" else "Off",
+				TextColor3 = Theme.colors.panel,
+				TextSize = if layout.isShortLandscape then 10 else 12,
+				ZIndex = Theme.zIndex.ui + 16,
+				[React.Event.Activated] = onToggle,
+			}, {
+				Corner = e("UICorner", { CornerRadius = Theme.round }),
+			}),
+		})
+	end
+
+	return e("Frame", {
+		Active = true,
+		BackgroundTransparency = 1,
+		Position = UDim2.fromScale(0, 0),
+		Size = UDim2.fromScale(1, 1),
+		ZIndex = Theme.zIndex.ui + 14,
+	}, {
+		Backdrop = e("TextButton", {
+			BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+			BackgroundTransparency = 0.5,
+			BorderSizePixel = 0,
+			Position = UDim2.fromScale(0, 0),
+			Size = UDim2.fromScale(1, 1),
+			Text = "",
+			ZIndex = Theme.zIndex.ui + 14,
+			[React.Event.Activated] = onClose,
+		}),
+		Panel = e("Frame", {
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			BackgroundColor3 = Theme.colors.panel,
+			BorderSizePixel = 0,
+			Position = UDim2.fromScale(0.5, 0.5),
+			Size = UDim2.fromOffset(panelWidth, panelHeight),
+			ZIndex = Theme.zIndex.ui + 15,
+		}, {
+			Corner = e("UICorner", { CornerRadius = Theme.corner }),
+			Stroke = e("UIStroke", {
+				Color = Color3.fromRGB(231, 224, 207),
+				Thickness = 1,
+			}),
+			Title = e("TextLabel", {
+				BackgroundTransparency = 1,
+				Font = Enum.Font.GothamBold,
+				Position = UDim2.fromOffset(padX, padY),
+				Size = UDim2.new(1, -(padX * 2 + 28), 0, titleHeight),
+				Text = "Settings",
+				TextColor3 = Theme.colors.text,
+				TextSize = if layout.isShortLandscape then 13 else 15,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				ZIndex = Theme.zIndex.ui + 16,
+			}),
+			CloseButton = e("TextButton", {
+				AnchorPoint = Vector2.new(1, 0),
+				AutoButtonColor = true,
+				BackgroundTransparency = 1,
+				BorderSizePixel = 0,
+				Font = Enum.Font.GothamBold,
+				Position = UDim2.new(1, -8, 0, padY - 4),
+				Size = UDim2.fromOffset(28, titleHeight + 8),
+				Text = "x",
+				TextColor3 = Theme.colors.mutedText,
+				TextSize = if layout.isShortLandscape then 14 else 16,
+				ZIndex = Theme.zIndex.ui + 16,
+				[React.Event.Activated] = onClose,
+			}),
+			Divider = e("Frame", {
+				BackgroundColor3 = Color3.fromRGB(231, 224, 207),
+				BorderSizePixel = 0,
+				Position = UDim2.fromOffset(padX, dividerY),
+				Size = UDim2.new(1, -padX * 2, 0, 1),
+				ZIndex = Theme.zIndex.ui + 16,
+			}),
+			MusicRow = makeRow("Music", musicEnabled, onToggleMusic, 1),
+			SoundRow = makeRow("Sound Effects", soundEnabled, onToggleSound, 2),
+			ReducedMotionRow = makeRow("Reduced Motion", reducedMotion, onToggleReducedMotion, 3),
+		}),
+	})
+end
+
+-- Shows a compact 7-day streak track. Positions itself above the quest panel in the
+-- same left-side vertical stack. Displays a Claim button only when canClaimDailyCheckIn.
+local function createStreakTrackPanel(farmState: FarmState, layout: LayoutMetrics, onClaim: () -> ())
+	local streakDay = farmState.streakDay or 0
+	local canClaim = farmState.canClaimDailyCheckIn
+
+	-- Next claimable slot wraps 1-7; if day 7 was last claimed, next is day 1.
+	local todaySlot = (streakDay % 7) + 1
+
+	local width = if layout.isShortLandscape then 150 elseif layout.isCompact then 168 else 190
+	local padY = 4
+	local headerHeight = if layout.isShortLandscape then 16 else 20
+	local slotsRowHeight = if layout.isShortLandscape then 18 else 22
+	local claimButtonHeight = if layout.isShortLandscape then 20 else 24
+	local panelHeight = padY + headerHeight + slotsRowHeight + padY
+		+ (if canClaim then claimButtonHeight + 4 else 0)
+
+	local weatherHeight = if layout.isShortLandscape then 28 else 34
+	local weatherOffset = if layout.isShortLandscape then 54 else 42
+	local y = layout.topY + layout.counterHeight + weatherOffset + weatherHeight + 8
+
+	local slotSize = if layout.isShortLandscape then 14 else 18
+	local innerWidth = width - 12
+	local slotSpacing = math.floor(innerWidth / 7)
+
+	local slotsChildren = {}
+	for dayNum = 1, 7 do
+		local isClaimed = streakDay >= dayNum
+		local isToday = canClaim and dayNum == todaySlot
+		local isDay7 = dayNum == 7
+		local slotW = if isDay7 then slotSize + 2 else slotSize
+		local slotH = slotW
+		local slotX = 6 + (dayNum - 1) * slotSpacing + math.floor((slotSpacing - slotW) / 2)
+		local slotY = math.floor((slotsRowHeight - slotH) / 2)
+
+		local bgColor = if isClaimed
+			then Theme.colors.coral
+			elseif isToday then Color3.fromRGB(255, 245, 235)
+			else Color3.fromRGB(231, 224, 207)
+		local strokeColor = if isClaimed
+			then Color3.fromRGB(200, 82, 58)
+			elseif isToday then Theme.colors.coral
+			else Color3.fromRGB(200, 190, 175)
+		local labelText = if isClaimed then "+" else tostring(dayNum)
+		local labelColor = if isClaimed
+			then Color3.fromRGB(255, 255, 255)
+			elseif isToday then Theme.colors.coral
+			else Theme.colors.mutedText
+
+		slotsChildren["Slot" .. tostring(dayNum)] = e("Frame", {
+			BackgroundColor3 = bgColor,
+			BorderSizePixel = 0,
+			Position = UDim2.fromOffset(slotX, slotY),
+			Size = UDim2.fromOffset(slotW, slotH),
+			ZIndex = Theme.zIndex.ui + 2,
+		}, {
+			Corner = e("UICorner", { CornerRadius = Theme.round }),
+			Stroke = e("UIStroke", {
+				Color = strokeColor,
+				Thickness = if isToday then 1.5 else 1,
+			}),
+			Label = e("TextLabel", {
+				BackgroundTransparency = 1,
+				Font = Enum.Font.GothamBold,
+				Position = UDim2.fromScale(0, 0),
+				Size = UDim2.fromScale(1, 1),
+				Text = labelText,
+				TextColor3 = labelColor,
+				TextSize = if layout.isShortLandscape then 7 else 9,
+				TextXAlignment = Enum.TextXAlignment.Center,
+				ZIndex = Theme.zIndex.ui + 3,
+			}),
+		})
+
+		-- Day 7 gets a small star below it to hint at the treat reward.
+		if isDay7 then
+			slotsChildren.Day7Star = e("TextLabel", {
+				BackgroundTransparency = 1,
+				Font = Enum.Font.GothamBold,
+				Position = UDim2.fromOffset(slotX, slotY + slotH),
+				Size = UDim2.fromOffset(slotW, if layout.isShortLandscape then 7 else 8),
+				Text = "*",
+				TextColor3 = if isClaimed then Theme.colors.coin else Color3.fromRGB(200, 190, 175),
+				TextSize = if layout.isShortLandscape then 7 else 8,
+				TextXAlignment = Enum.TextXAlignment.Center,
+				ZIndex = Theme.zIndex.ui + 3,
+			})
+		end
+	end
+
+	local panelChildren = {
+		Corner = e("UICorner", { CornerRadius = Theme.corner }),
+		Stroke = e("UIStroke", {
+			Color = Color3.fromRGB(231, 224, 207),
+			Thickness = 1,
+		}),
+		Title = e("TextLabel", {
+			BackgroundTransparency = 1,
+			Font = Enum.Font.GothamBold,
+			Position = UDim2.fromOffset(8, padY),
+			Size = UDim2.new(1, -60, 0, headerHeight),
+			Text = "Daily Streak",
+			TextColor3 = Theme.colors.text,
+			TextSize = if layout.isShortLandscape then 9 else 11,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			ZIndex = Theme.zIndex.ui + 2,
+		}),
+		DayLabel = e("TextLabel", {
+			BackgroundTransparency = 1,
+			Font = Enum.Font.GothamSemibold,
+			Position = UDim2.new(1, -52, 0, padY),
+			Size = UDim2.fromOffset(46, headerHeight),
+			Text = if streakDay > 0 then string.format("Day %d", streakDay) else "Day 0",
+			TextColor3 = Theme.colors.coral,
+			TextSize = if layout.isShortLandscape then 9 else 11,
+			TextXAlignment = Enum.TextXAlignment.Right,
+			ZIndex = Theme.zIndex.ui + 2,
+		}),
+		SlotsRow = e("Frame", {
+			BackgroundTransparency = 1,
+			Position = UDim2.fromOffset(0, padY + headerHeight),
+			Size = UDim2.new(1, 0, 0, slotsRowHeight),
+			ZIndex = Theme.zIndex.ui + 2,
+		}, slotsChildren),
+	}
+
+	if canClaim then
+		panelChildren.ClaimButton = e("TextButton", {
+			AnchorPoint = Vector2.new(0.5, 0),
+			AutoButtonColor = true,
+			BackgroundColor3 = Theme.colors.coral,
+			BorderSizePixel = 0,
+			Font = Enum.Font.GothamBold,
+			Position = UDim2.new(0.5, 0, 0, padY + headerHeight + slotsRowHeight + 4),
+			Size = UDim2.new(1, -12, 0, claimButtonHeight),
+			Text = "Claim!",
+			TextColor3 = Theme.colors.panel,
+			TextSize = if layout.isShortLandscape then 9 else 11,
+			ZIndex = Theme.zIndex.ui + 2,
+			[React.Event.Activated] = onClaim,
+		}, {
+			Corner = e("UICorner", { CornerRadius = Theme.corner }),
+		})
+	end
+
+	return e("Frame", {
+		BackgroundColor3 = Theme.colors.panel,
+		BorderSizePixel = 0,
+		Position = UDim2.fromOffset(layout.sideMargin, y),
+		Size = UDim2.fromOffset(width, panelHeight),
+		ZIndex = Theme.zIndex.ui + 1,
+	}, panelChildren)
+end
+
+local function createQuestPanel(farmState: FarmState, layout: LayoutMetrics, isExpanded: boolean, onActivated: () -> (), yOffset: number?)
 	if #farmState.quests <= 0 then
 		return nil
 	end
@@ -1154,7 +1446,7 @@ local function createQuestPanel(farmState: FarmState, layout: LayoutMetrics, isE
 		else (if layout.isShortLandscape then 42 else 50)
 	local weatherHeight = if layout.isShortLandscape then 28 else 34
 	local weatherOffset = if layout.isShortLandscape then 54 else 42
-	local y = layout.topY + layout.counterHeight + weatherOffset + weatherHeight + 8
+	local y = layout.topY + layout.counterHeight + weatherOffset + weatherHeight + 8 + (yOffset or 0)
 	local children = {
 		Corner = e("UICorner", {
 			CornerRadius = Theme.corner,
@@ -4002,7 +4294,8 @@ local function createTutorialOverlay(
 	farmState: FarmState,
 	animationTime: number,
 	feedbackItems: {FeedbackItem},
-	selectedDuckIndex: number?
+	selectedDuckIndex: number?,
+	onAdvance: (() -> ())?
 )
 	local clampedIndex = math.clamp(stepIndex, 1, #TUTORIAL_STEPS)
 	local step = TUTORIAL_STEPS[clampedIndex]
@@ -4025,9 +4318,12 @@ local function createTutorialOverlay(
 			then "Open Shop to continue."
 		elseif buyDuckNeedsCoins
 			then "Use Collect and Sell until Buy Duck is ready."
+		elseif step.id == "streak" or step.id == "quests"
+			then ""
 		elseif step.id == "care" and farmState.careRequestDuckIndex <= 0
 			then "Wait for one duck to ask for help."
 			else "Complete the highlighted task to continue."
+	local isInfoStep = step.id == "streak" or step.id == "quests"
 	local function createTutorialDim(position: UDim2, size: UDim2)
 		local commonProps = {
 			BackgroundColor3 = Color3.fromRGB(39, 47, 44),
@@ -4181,7 +4477,7 @@ local function createTutorialOverlay(
 				TextYAlignment = Enum.TextYAlignment.Top,
 				ZIndex = Theme.zIndex.ui + 24,
 			}),
-			Footer = e("TextLabel", {
+			Footer = if not isInfoStep then e("TextLabel", {
 				BackgroundTransparency = 1,
 				Font = Enum.Font.GothamBold,
 				Position = UDim2.fromOffset(16, cardHeight - 34),
@@ -4193,7 +4489,23 @@ local function createTutorialOverlay(
 				TextXAlignment = Enum.TextXAlignment.Left,
 				TextYAlignment = Enum.TextYAlignment.Top,
 				ZIndex = Theme.zIndex.ui + 24,
-			}),
+			}) else nil,
+			GotItButton = if isInfoStep then e("TextButton", {
+				AnchorPoint = Vector2.new(0.5, 1),
+				AutoButtonColor = true,
+				BackgroundColor3 = Theme.colors.coral,
+				BorderSizePixel = 0,
+				Font = Enum.Font.GothamBold,
+				Position = UDim2.new(0.5, 0, 1, -10),
+				Size = UDim2.fromOffset(if layout.isShortLandscape then 100 else 116, if layout.isShortLandscape then 26 else 30),
+				Text = "Got it!",
+				TextColor3 = Theme.colors.panel,
+				TextSize = if layout.isShortLandscape then 11 else 13,
+				ZIndex = Theme.zIndex.ui + 24,
+				[React.Event.Activated] = onAdvance,
+			}, {
+				Corner = e("UICorner", { CornerRadius = Theme.corner }),
+			}) else nil,
 		}),
 	})
 end
@@ -5105,6 +5417,10 @@ local function FarmScreen()
 	local eggCatchReward, setEggCatchReward = React.useState(nil :: EggCatchReward?)
 	local eggCatchClaimStatus, setEggCatchClaimStatus = React.useState("idle")
 	local eggCatchClaimMessage, setEggCatchClaimMessage = React.useState("")
+	local settingsOpen, setSettingsOpen = React.useState(false)
+	local musicEnabled, setMusicEnabled = React.useState(true)
+	local soundEnabled, setSoundEnabled = React.useState(true)
+	local reducedMotion, setReducedMotion = React.useState(false)
 	local previousStateRef = React.useRef(nil :: FarmState?)
 	local feedbackIdRef = React.useRef(0)
 	local scenePointerHandlerRef = React.useRef(nil :: ((Vector2, number?) -> ())?)
@@ -5122,7 +5438,11 @@ local function FarmScreen()
 	local isTutorialCareStepActive = tutorialVisible and activeTutorialStepId == "care"
 	local isViewingOtherFarm = farmState.isVisitingFarm == true
 	local function isTutorialActionAllowed(stepId: string): boolean
-		return activeTutorialStepId == nil or activeTutorialStepId == stepId
+		-- Info steps (streak, quests) teach new features without locking farm actions.
+		return activeTutorialStepId == nil
+			or activeTutorialStepId == stepId
+			or activeTutorialStepId == "streak"
+			or activeTutorialStepId == "quests"
 	end
 	local function isTutorialCareDuckAllowed(duckIndex: number?): boolean
 		if activeTutorialStepId ~= "care" or duckIndex == nil then
@@ -6011,12 +6331,27 @@ local function FarmScreen()
 	if screenMode == SCREEN_MODE_FARM then
 		children.WeatherOverlay = createWeatherOverlay(farmState, animationTime)
 		children.WeatherBadge = createWeatherBadge(farmState, layout)
+
+		-- Streak panel sits in the left-side stack between the weather badge and the quest
+		-- panel. It is gated on the same unlock rung as Minigames (post-guide completion).
+		local showStreakPanel = farmState.featureUnlocks.minigames == true and not isViewingOtherFarm
+		local streakPanelHeight = if not showStreakPanel then 0
+			elseif farmState.canClaimDailyCheckIn
+			then (if layout.isShortLandscape then 66 else 78)
+			else (if layout.isShortLandscape then 42 else 50)
+		local streakPanelGap = if showStreakPanel then 4 else 0
+
+		children.StreakPanel = if showStreakPanel
+			then createStreakTrackPanel(farmState, layout, function()
+				actionEvent:FireServer(RemoteProtocol.actions.claimDailyCheckIn)
+			end)
+			else nil
 		children.QuestPanel = if farmState.featureUnlocks.quests
 			then createQuestPanel(farmState, layout, questPanelExpanded, function()
 				setQuestPanelExpanded(function(current)
 					return not current
 				end)
-			end)
+			end, streakPanelHeight + streakPanelGap)
 			else nil
 		children.WelcomeBackCard = if not farmState.isFreshProfile and not isViewingOtherFarm
 			then createWelcomeBackCard(welcomeBack, layout, function()
@@ -6102,6 +6437,25 @@ local function FarmScreen()
 					height = layout.counterHeight,
 				}),
 			}),
+		})
+
+		children.SettingsButton = e("TextButton", {
+			AnchorPoint = Vector2.new(1, 0),
+			AutoButtonColor = true,
+			BackgroundColor3 = Color3.fromRGB(43, 52, 49),
+			BorderSizePixel = 0,
+			Font = Enum.Font.GothamBold,
+			Position = UDim2.new(1, -layout.sideMargin, 0, layout.topY + layout.counterHeight + 8),
+			Size = UDim2.fromOffset(if layout.isShortLandscape then 60 else 70, if layout.isShortLandscape then 26 else 30),
+			Text = "Settings",
+			TextColor3 = Color3.fromRGB(255, 255, 255),
+			TextSize = if layout.isShortLandscape then 10 else 11,
+			ZIndex = Theme.zIndex.ui + 1,
+			[React.Event.Activated] = function()
+				setSettingsOpen(true)
+			end,
+		}, {
+			Corner = e("UICorner", { CornerRadius = Theme.corner }),
 		})
 
 		local canOpenMinigames = not isViewingOtherFarm and not isTransitioning and not tutorialVisible
@@ -6302,7 +6656,10 @@ local function FarmScreen()
 				farmState,
 				animationTime,
 				feedbackItems,
-				selectedDuckIndex
+				selectedDuckIndex,
+				function()
+					advanceTutorial(activeTutorialStepId or "")
+				end
 			)
 			else nil
 	elseif screenMode == SCREEN_MODE_SHOP then
@@ -6320,7 +6677,10 @@ local function FarmScreen()
 				farmState,
 				animationTime,
 				feedbackItems,
-				selectedDuckIndex
+				selectedDuckIndex,
+				function()
+					advanceTutorial(activeTutorialStepId or "")
+				end
 			)
 			else nil
 	elseif screenMode == SCREEN_MODE_MINIGAMES then
@@ -6355,6 +6715,18 @@ local function FarmScreen()
 		)
 	end
 
+	children.SettingsPanel = if settingsOpen
+		then createSettingsPanel(
+			layout,
+			musicEnabled,
+			soundEnabled,
+			reducedMotion,
+			function() setSettingsOpen(false) end,
+			function() setMusicEnabled(function(v) return not v end) end,
+			function() setSoundEnabled(function(v) return not v end) end,
+			function() setReducedMotion(function(v) return not v end) end
+		)
+		else nil
 	children.Feedback = createFeedbackLayer(feedbackItems, animationTime)
 	children.FadeOverlay = createFadeOverlay(transitionAlpha)
 

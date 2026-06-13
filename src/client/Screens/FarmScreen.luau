@@ -1157,7 +1157,8 @@ local function createBuyDuckFamilyPanel(
 	duckdexTab: boolean,
 	onBuyFamily: (familyId: string) -> (),
 	onToggleTab: () -> (),
-	onClose: () -> ()
+	onClose: () -> (),
+	onOpenMysteryBox: () -> ()
 )
 	local black = Color3.new(0, 0, 0)
 	local uiBase = Theme.zIndex.ui
@@ -1187,6 +1188,7 @@ local function createBuyDuckFamilyPanel(
 	end
 
 	local collectionPct = math.floor(ownedCount / 6 * 100)
+	local boxCount = if typeof(farmState.mysteryDuckBoxes) == "number" then farmState.mysteryDuckBoxes else 0
 
 	-- Rarity colour helper
 	local function rarityColor(rarity: string): Color3
@@ -1309,6 +1311,65 @@ local function createBuyDuckFamilyPanel(
 	-- ── DUCKDEX TAB content ───────────────────────────────────────────────
 	local duckdexRows = {}
 	local duckdexCursorY = 0
+
+	-- Mystery Duck Box: surfaces an Open affordance at the top of the Duckdex (its source is
+	-- Duckdex milestones). Only shown when the player owns at least one; opening fires the server
+	-- action, which replies with candidates that the pick panel (rendered above this) displays.
+	if boxCount > 0 then
+		local boxRowH = if layout.isShortLandscape then 40 else 46
+
+		duckdexRows.MysteryBox = e("Frame", {
+			AnchorPoint = Vector2.new(0, 0),
+			BackgroundColor3 = Color3.fromRGB(255, 244, 222),
+			BorderSizePixel = 0,
+			Position = UDim2.fromOffset(0, duckdexCursorY),
+			Size = UDim2.fromOffset(contentW, boxRowH),
+			ZIndex = uiBase + 13,
+		}, {
+			Corner = e("UICorner", { CornerRadius = Theme.corner }),
+			Stroke = e("UIStroke", { Color = Theme.colors.coral, Thickness = 1, Transparency = 0.3 }),
+			Icon = e("TextLabel", {
+				BackgroundTransparency = 1,
+				Font = Enum.Font.GothamBold,
+				Position = UDim2.fromOffset(8, 0),
+				Size = UDim2.fromOffset(24, boxRowH),
+				Text = "🎁",
+				TextSize = if layout.isShortLandscape then 16 else 18,
+				TextXAlignment = Enum.TextXAlignment.Center,
+				ZIndex = uiBase + 13,
+			}),
+			Label = e("TextLabel", {
+				BackgroundTransparency = 1,
+				Font = Enum.Font.GothamBold,
+				Position = UDim2.fromOffset(36, 0),
+				Size = UDim2.fromOffset(contentW - 36 - 66, boxRowH),
+				Text = string.format("Mystery Duck Box ×%d", boxCount),
+				TextColor3 = Theme.colors.text,
+				TextSize = if layout.isShortLandscape then 11 else 12,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				TextYAlignment = Enum.TextYAlignment.Center,
+				ZIndex = uiBase + 13,
+			}),
+			OpenBtn = e("TextButton", {
+				AnchorPoint = Vector2.new(1, 0.5),
+				AutoButtonColor = true,
+				BackgroundColor3 = Theme.colors.coral,
+				BorderSizePixel = 0,
+				Font = Enum.Font.GothamBold,
+				Position = UDim2.new(1, -8, 0.5, 0),
+				Size = UDim2.fromOffset(if layout.isShortLandscape then 50 else 56, if layout.isShortLandscape then 24 else 28),
+				Text = "Open",
+				TextColor3 = Color3.new(1, 1, 1),
+				TextSize = if layout.isShortLandscape then 10 else 11,
+				ZIndex = uiBase + 13,
+				[React.Event.Activated] = onOpenMysteryBox,
+			}, {
+				Corner = e("UICorner", { CornerRadius = Theme.corner }),
+			}),
+		})
+
+		duckdexCursorY += boxRowH + 8
+	end
 
 	-- Collection header
 	local progressBarW = contentW - 70
@@ -1596,7 +1657,7 @@ local function createBuyDuckFamilyPanel(
 					Font = Enum.Font.GothamBold,
 					Position = UDim2.new(0.5, 0, 0, 0),
 					Size = UDim2.new(0.5, 0, 1, 0),
-					Text = string.format("Duckdex  %d/6", ownedCount),
+					Text = if boxCount > 0 then string.format("Duckdex  %d/6 🎁", ownedCount) else string.format("Duckdex  %d/6", ownedCount),
 					TextColor3 = if duckdexTab then Theme.colors.coral else Theme.colors.mutedText,
 					TextSize = if layout.isShortLandscape then 10 else 11,
 					ZIndex = uiBase + 12,
@@ -1658,12 +1719,10 @@ local function createStarterChoiceOverlay(
 			end
 		end
 
+		-- The starter pick is a pure preference choice: rarity badges are intentionally
+		-- omitted here so no option looks "better" before rarity is taught by the families
+		-- guide step that fires right after. The middle space is reserved for duck art.
 		local displayName = if familyDef then familyDef.displayName else familyId
-		local rarity = if familyDef then familyDef.rarity else "common"
-		local rarityColor = if rarity == "uncommon" then Color3.fromRGB(80, 160, 80)
-			elseif rarity == "rare" then Color3.fromRGB(70, 130, 210)
-			else Theme.colors.mutedText
-		local rarityLabel = (rarity:sub(1, 1)):upper() .. rarity:sub(2)
 
 		cardElements["Card" .. i] = e("Frame", {
 			AnchorPoint = Vector2.new(0, 0),
@@ -1686,21 +1745,6 @@ local function createStarterChoiceOverlay(
 				TextSize = if layout.isShortLandscape then 10 else 11,
 				TextXAlignment = Enum.TextXAlignment.Center,
 				ZIndex = uiBase + 32,
-			}),
-			RarityBadge = e("TextLabel", {
-				AnchorPoint = Vector2.new(0.5, 0),
-				BackgroundColor3 = rarityColor,
-				BackgroundTransparency = 0.2,
-				Font = Enum.Font.Gotham,
-				Position = UDim2.new(0.5, 0, 0, if layout.isShortLandscape then 26 else 30),
-				Size = UDim2.new(0.8, 0, 0, if layout.isShortLandscape then 14 else 16),
-				Text = rarityLabel,
-				TextColor3 = Color3.new(1, 1, 1),
-				TextSize = if layout.isShortLandscape then 9 else 10,
-				TextXAlignment = Enum.TextXAlignment.Center,
-				ZIndex = uiBase + 32,
-			}, {
-				Corner = e("UICorner", { CornerRadius = UDim.new(1, 0) }),
 			}),
 			ChooseBtn = e("TextButton", {
 				AnchorPoint = Vector2.new(0.5, 1),
@@ -6879,13 +6923,18 @@ local function FarmScreen()
 				end
 
 				if #parts > 0 then
+					-- When a box is part of the reward, point the player to where they open it,
+					-- since the Open affordance lives inside the Buy Duck → Duckdex panel.
+					local message = if rewardMysteryBox > 0
+						then string.format("Duckdex reward! %s  •  Open it in Buy Duck → Duckdex", table.concat(parts, " + "))
+						else string.format("Duckdex reward! %s", table.concat(parts, " + "))
 					feedbackIdRef.current += 1
 					setFeedbackItems(function(items: {FeedbackItem})
 						local nextItems = table.clone(items)
 						table.insert(nextItems, createFeedbackItem(
 							feedbackIdRef.current,
 							"collection",
-							string.format("Duckdex reward! %s", table.concat(parts, " + ")),
+							message,
 							Theme.colors.coral,
 							0.5,
 							0.21
@@ -7620,6 +7669,9 @@ local function FarmScreen()
 			end,
 			function()
 				setBuyDuckPanelOpen(false)
+			end,
+			function()
+				actionEvent:FireServer(RemoteProtocol.actions.openMysteryDuckBox)
 			end
 		)
 		else nil

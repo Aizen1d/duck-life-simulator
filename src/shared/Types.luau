@@ -321,6 +321,14 @@ export type MinigamesDefinition = {
 	eggCatch: EggCatchDefinition,
 }
 
+export type BadgesDefinition = {
+	firstDuck: number,
+	firstRename: number,
+	eggsCollected100: number,
+	level5Duck: number,
+	streak7: number,
+}
+
 export type PrototypeConfig = {
 	gameName: string,
 	playerMode: string,
@@ -346,6 +354,7 @@ export type PrototypeConfig = {
 	comebackGift: ComebackGiftDefinition,
 	dailyQuests: DailyQuestsDefinition,
 	minigames: MinigamesDefinition,
+	badges: BadgesDefinition,
 }
 
 return {}

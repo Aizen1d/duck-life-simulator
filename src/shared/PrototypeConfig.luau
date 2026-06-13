@@ -544,6 +544,16 @@ local PrototypeConfig = {
 			},
 		},
 	},
+
+	-- Badge IDs are created in the Roblox Creator Dashboard and filled in by the owner.
+	-- 0 means the badge has not been created yet; award calls are no-ops for id = 0.
+	badges = {
+		firstDuck = 0,
+		firstRename = 0,
+		eggsCollected100 = 0,
+		level5Duck = 0,
+		streak7 = 0,
+	},
 }
 
 return PrototypeConfig

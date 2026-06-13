@@ -1,5 +1,6 @@
 --!strict
 
+local BadgeService = game:GetService("BadgeService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -127,6 +128,35 @@ local started = false
 local statesByPlayer: {[Player]: PlayerState} = {}
 local recentSaveEntriesByUserId: {[number]: SaveEntry} = {}
 local farmViewTargetsByPlayer: {[Player]: Player} = {}
+local sessionEggsCollectedByPlayer: {[Player]: number} = {}
+
+-- Wraps BadgeService:AwardBadge in a task.spawn+pcall so badge failures never
+-- interrupt gameplay. Id = 0 means the badge hasn't been created yet; skip silently.
+local function tryAwardBadge(player: Player, badgeId: number)
+	if badgeId == 0 then
+		return
+	end
+
+	task.spawn(function()
+		local ok, err = pcall(function()
+			BadgeService:AwardBadge(player.UserId, badgeId)
+		end)
+
+		if not ok then
+			warn(string.format("[Badges] AwardBadge failed for %s (id %d): %s", player.Name, badgeId, tostring(err)))
+		end
+	end)
+end
+
+local function hasDuckAtLevel(state: PlayerState, targetLevel: number): boolean
+	for _, duck in state.ducks do
+		if duck.level >= targetLevel then
+			return true
+		end
+	end
+
+	return false
+end
 local actionEvent: RemoteEvent
 local stateEvent: RemoteEvent
 local noticeEvent: RemoteEvent
@@ -1971,19 +2001,19 @@ local function filterDuckName(player: Player, requestedName: string): (string?, 
 	return trimmedName, nil
 end
 
-local function renameDuck(player: Player, state: PlayerState, payload: any)
+local function renameDuck(player: Player, state: PlayerState, payload: any): boolean
 	local payloadDuckIndex, requestedName = getRenamePayload(payload)
 
 	if not payloadDuckIndex or not requestedName then
 		setRenameError(state, 0, "Invalid name")
-		return
+		return false
 	end
 
 	local duck, duckIndex = getDuckByPayloadIndex(state, payloadDuckIndex)
 
 	if not duck then
 		setRenameError(state, 0, "Duck not found")
-		return
+		return false
 	end
 
 	local trimmedName = trimText(requestedName)
@@ -1992,40 +2022,41 @@ local function renameDuck(player: Player, state: PlayerState, payload: any)
 
 	if nameLength < renameConfig.minLength then
 		setRenameError(state, duckIndex, "Name is too short")
-		return
+		return false
 	end
 
 	if nameLength > renameConfig.maxLength then
 		setRenameError(state, duckIndex, "Name is too long")
-		return
+		return false
 	end
 
 	if isDuckNameUsed(state, trimmedName, duck) then
 		setRenameError(state, duckIndex, "Name already used")
-		return
+		return false
 	end
 
 	local filteredName, filterError = filterDuckName(player, trimmedName)
 
 	if not filteredName then
 		setRenameError(state, duckIndex, filterError or "Try another name")
-		return
+		return false
 	end
 
 	if getTextLength(filteredName) > renameConfig.maxLength then
 		setRenameError(state, duckIndex, "Name is too long")
-		return
+		return false
 	end
 
 	if isDuckNameUsed(state, filteredName, duck) then
 		setRenameError(state, duckIndex, "Name already used")
-		return
+		return false
 	end
 
 	duck.name = filteredName
 	state.renameError = ""
 	state.renameErrorDuckIndex = 0
 	markSaveDirty(state)
+	return true
 end
 
 local function getVisitUserIdFromPayload(payload: any): number?
@@ -2308,22 +2339,45 @@ local function onAction(player: Player, actionName: any, payload: any?)
 		return
 	end
 
+	local badgeConfig = PrototypeConfig.badges
+
 	if actionName == RemoteProtocol.actions.collectEggs then
+		local beforeEggs = state.eggs
 		collectEggs(state)
+		local gained = state.eggs - beforeEggs
+		if gained > 0 then
+			local total = (sessionEggsCollectedByPlayer[player] or 0) + gained
+			sessionEggsCollectedByPlayer[player] = total
+			if total >= 100 then
+				tryAwardBadge(player, badgeConfig.eggsCollected100)
+			end
+		end
 	elseif actionName == RemoteProtocol.actions.sellEggs then
 		sellEggs(state)
 	elseif actionName == RemoteProtocol.actions.buyEggValueUpgrade then
 		buyEggValueUpgrade(state)
 	elseif actionName == RemoteProtocol.actions.buyDuck then
 		buyDuck(state)
+		if #state.ducks >= 2 then
+			tryAwardBadge(player, badgeConfig.firstDuck)
+		end
 	elseif actionName == RemoteProtocol.actions.buyShopItem then
 		buyShopItem(state, payload)
 	elseif actionName == RemoteProtocol.actions.useTreatOnDuck then
 		useTreatOnDuck(state, payload)
+		if hasDuckAtLevel(state, 5) then
+			tryAwardBadge(player, badgeConfig.level5Duck)
+		end
 	elseif actionName == RemoteProtocol.actions.careForDucks then
 		careForDuck(state, payload)
+		if hasDuckAtLevel(state, 5) then
+			tryAwardBadge(player, badgeConfig.level5Duck)
+		end
 	elseif actionName == RemoteProtocol.actions.renameDuck then
-		renameDuck(player, state, payload)
+		local renameOk = renameDuck(player, state, payload)
+		if renameOk then
+			tryAwardBadge(player, badgeConfig.firstRename)
+		end
 	elseif actionName == RemoteProtocol.actions.toggleVisitorHelp then
 		toggleVisitorHelp(player, state)
 		return
@@ -2337,12 +2391,16 @@ local function onAction(player: Player, actionName: any, payload: any?)
 		claimEggCatchReward(player, state, payload)
 	elseif actionName == RemoteProtocol.actions.claimDailyCheckIn then
 		claimDailyCheckIn(player, state)
+		if state.streakDay == 7 then
+			tryAwardBadge(player, badgeConfig.streak7)
+		end
 	end
 
 	sendState(player, state)
 end
 
 local function onPlayerAdded(player: Player)
+	sessionEggsCollectedByPlayer[player] = 0
 	local state = createPlayerState()
 	local saveEntry = {
 		userId = player.UserId,
@@ -2404,6 +2462,9 @@ local function onPlayerAdded(player: Player)
 
 	if currentDay > state.lastDailyClaimDay then
 		claimDailyCheckIn(player, state)
+		if state.streakDay == 7 then
+			tryAwardBadge(player, PrototypeConfig.badges.streak7)
+		end
 	end
 
 	sendState(player, state)
@@ -2437,6 +2498,7 @@ local function onPlayerRemoving(player: Player)
 
 	statesByPlayer[player] = nil
 	farmViewTargetsByPlayer[player] = nil
+	sessionEggsCollectedByPlayer[player] = nil
 
 	for viewer, targetPlayer in farmViewTargetsByPlayer do
 		if targetPlayer == player then

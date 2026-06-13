@@ -301,6 +301,62 @@ Expected:
 - In Studio, they work only as tester helpers.
 - Outside Studio, the server guard prevents state changes from those action names.
 
+## Offline Progress V0 and Daily Streak V1 Security Review
+
+Reviewed 2026-06-13 against four threat vectors. No exploitable vulnerabilities found.
+
+### Forged `lastSeenUtc` timestamps
+
+**How the path works:** `lastSeenUtc` is written exclusively by the server in `serializeSaveData` (`lastSeenUtc = os.time()`). It is read from `savedData.lastSeenUtc` after a DataStore load. The client never sends a timestamp and has no API access to DataStore — the value cannot be forged from a client exploit.
+
+**Additional safeguards in `computeOfflineProduction`:**
+- `savedData.lastSeenUtc or 0` defaults missing values (pre-schema-7 saves) to `0`, which triggers the `lastSeenUtc <= 0` early return — no eggs granted.
+- `elapsedSeconds = math.clamp(os.time() - lastSeenUtc, 0, capSeconds)` clamps negative results (future-dated timestamp) to `0` and overly-large results (very old timestamp) to the 2-hour cap.
+
+**Verdict: secure.** DataStore is server-authoritative; no client path exists to inject a timestamp or inflate away-time.
+
+### Clock skew
+
+All time math uses `os.time()` — UTC Unix time on Roblox servers synced via NTP. Expected inter-instance drift is well under one second.
+
+- **Offline eggs:** 1 second of skew at base rate (`1` duck, level `1`, 50% rate, 5 s interval) = `0.1` eggs. Negligible.
+- **Day boundary:** `math.floor(os.time() / 86400)` gives the current UTC day. Sub-second skew near UTC midnight shifts the claim window by under a second. Not exploitable.
+- **Comeback gift threshold** (`os.time() - lastSeenUtc >= 7 * 86400`): same sub-second tolerance. Not exploitable.
+
+**Verdict: secure.** Skew tolerance is within acceptable fairness bounds; no exploitable window.
+
+### Duplicate daily claims
+
+**Manual `claim_daily_check_in` action:**
+
+1. `ACTION_COOLDOWN_SECONDS = 0.15` — the per-action rate limiter in `isRateLimited` drops any call within 150 ms of the last one before it reaches business logic.
+2. `if currentDay <= state.lastDailyClaimDay` — idempotent guard; rejects all same-day calls after the first.
+3. `state.lastDailyClaimDay = currentDay` is set synchronously (no yields) before `markSaveDirty` and `queueNotice`. The server runs single-threaded per place (no Parallel Luau), so there is no race window between the guard check and the state mutation.
+
+**Join-time auto-claim race:**
+
+The auto-claim in `onPlayerAdded` fires only after `state.isLoaded = true`. Any action received while `isLoaded` is false is caught by the `if not state.isLoaded then return end` guard in `onAction`, so a client cannot race a manual claim against the auto-claim.
+
+**Verdict: secure.** Two independent layers prevent double-claiming on both the manual and join paths. A `daily_check_in_rejected` notice is queued on same-day repeat calls.
+
+### Rejoin spam
+
+To get a second auto-claim via rapid leave-rejoin on the same UTC day:
+
+1. Join → auto-claim fires for day `N`, sets `lastDailyClaimDay = N`, marks save dirty.
+2. Leave → `onPlayerRemoving` calls `waitForActiveSave`, then calls `savePlayerState` if still dirty.
+3. Rejoin → DataStore returns `lastDailyClaimDay = N`; `currentDay (N) > N` is false → auto-claim does not fire.
+
+`waitForActiveSave` blocks the leave handler until any in-flight save completes, so the player cannot leave fast enough to skip the write under normal conditions.
+
+**Infrastructure edge case:** If a DataStore write fails (Roblox outage, throttle exhaustion), `lastDailyClaimDay` may not persist, and the player could receive a second auto-claim on the next rejoin. This is not client-drivable — it requires a Roblox infrastructure failure. It is already mitigated by the save retry in `onPlayerRemoving`, and the worst outcome (one extra daily reward per infrastructure failure) is acceptable for the cozy promise.
+
+**Verdict: secure against client-driven rejoin spam.** DataStore write failures are a Roblox infrastructure risk, not a client attack vector.
+
+---
+
+**Overall verdict:** Both claim paths are server-authoritative. Timestamps are server-owned, duplicate guards are idempotent with no race window, and rejoin spam cannot bypass the DataStore-persisted day stamp under normal conditions. No code changes required.
+
 ## Pass Criteria
 
 The remote security pass is complete when:

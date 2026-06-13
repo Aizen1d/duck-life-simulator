@@ -38,6 +38,9 @@ local RemoteProtocol = {
 		pickDuckBoxCandidate = "pick_duck_box_candidate",
 		pickStarterChoice = "pick_starter_choice",
 		claimCollectionReward = "claim_collection_reward",
+		buyEgg = "buy_egg",
+		startIncubation = "start_incubation",
+		collectHatch = "collect_hatch",
 	},
 
 	notices = {
@@ -53,6 +56,7 @@ local RemoteProtocol = {
 		duckBoxCandidatePicked = "duck_box_candidate_picked",
 		pendingStarterChoice = "pending_starter_choice",
 		collectionRewardGranted = "collection_reward_granted",
+		eggHatched = "egg_hatched",
 	},
 }
 

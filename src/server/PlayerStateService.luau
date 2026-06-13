@@ -90,6 +90,9 @@ type PlayerState = {
 	pendingDuckBoxCandidates: {{family: string, rarity: string, displayName: string}}?,
 	pendingAnalytics: {{[string]: any}},
 	funnelMilestones: {[string]: boolean},
+	eggInventory: {[string]: number},
+	incubatorSlots: {{eggType: string, finishUtc: number}},
+	hatchPity: {[string]: number},
 }
 
 type SaveEntry = {
@@ -1051,6 +1054,9 @@ local function createPlayerState(): PlayerState
 		pendingDuckBoxCandidates = nil,
 		pendingAnalytics = {},
 		funnelMilestones = {},
+		eggInventory = {},
+		incubatorSlots = {},
+		hatchPity = {},
 	}
 
 	for _ = 1, PrototypeConfig.startingDucks do
@@ -1130,6 +1136,52 @@ local function applySavedData(state: PlayerState, savedData: {[string]: any})
 	state.pendingDuckBoxCandidates = nil
 	state.funnelMilestones = if typeof(savedData.funnelMilestones) == "table" then savedData.funnelMilestones else {}
 	state.pendingAnalytics = {}
+
+	-- Phase 6 (Hatching): egg inventory, incubator slots, and pity counters. All counts are
+	-- clamped to non-negative integers; incubator slots keep only known egg types with a finite
+	-- finishUtc and are capped at the configured slot count. A finishUtc already in the past is
+	-- legitimate (the egg finished while the player was away) — it becomes collectable on load.
+	local savedEggInventory = if typeof(savedData.eggInventory) == "table" then savedData.eggInventory else {}
+	state.eggInventory = {}
+	for _, eggDef in PrototypeConfig.eggTypes do
+		local count = savedEggInventory[eggDef.id]
+		state.eggInventory[eggDef.id] = if typeof(count) == "number" and count == count and count ~= math.huge
+			then math.max(0, math.floor(count))
+			else 0
+	end
+
+	state.hatchPity = {}
+	local savedHatchPity = if typeof(savedData.hatchPity) == "table" then savedData.hatchPity else {}
+	for _, eggDef in PrototypeConfig.eggTypes do
+		if eggDef.pityThreshold ~= nil then
+			local pity = savedHatchPity[eggDef.id]
+			state.hatchPity[eggDef.id] = if typeof(pity) == "number" and pity == pity and pity ~= math.huge
+				then math.clamp(math.floor(pity), 0, eggDef.pityThreshold)
+				else 0
+		end
+	end
+
+	state.incubatorSlots = {}
+	local savedSlots = if typeof(savedData.incubatorSlots) == "table" then savedData.incubatorSlots else {}
+	for _, slot in savedSlots do
+		if #state.incubatorSlots >= PrototypeConfig.incubator.slotCount then
+			break
+		end
+
+		if typeof(slot) == "table" and typeof(slot.eggType) == "string" and typeof(slot.finishUtc) == "number" and slot.finishUtc == slot.finishUtc then
+			local knownEgg = false
+			for _, eggDef in PrototypeConfig.eggTypes do
+				if eggDef.id == slot.eggType then
+					knownEgg = true
+					break
+				end
+			end
+
+			if knownEgg then
+				table.insert(state.incubatorSlots, { eggType = slot.eggType, finishUtc = math.floor(slot.finishUtc) })
+			end
+		end
+	end
 	state.eggValueLevel = math.clamp(savedData.eggValueLevel, 0, EGG_VALUE_MAX_LEVEL)
 	state.eggSellValue = PrototypeConfig.eggSellValue + state.eggValueLevel * PrototypeConfig.firstUpgrade.valueIncrease
 	state.ducks = {}
@@ -1203,7 +1255,7 @@ local function serializeSaveData(state: PlayerState)
 	end
 
 	return {
-		schemaVersion = 12,
+		schemaVersion = 13,
 		coins = state.coins,
 		eggs = state.eggs,
 		duckFeed = getDuckFeedCount(state),
@@ -1225,6 +1277,9 @@ local function serializeSaveData(state: PlayerState)
 		starterChoiceCompleted = state.starterChoiceCompleted,
 		mysteryDuckBoxes = state.mysteryDuckBoxes,
 		funnelMilestones = state.funnelMilestones,
+		eggInventory = state.eggInventory,
+		incubatorSlots = state.incubatorSlots,
+		hatchPity = state.hatchPity,
 	}
 end
 
@@ -1359,6 +1414,36 @@ local function serializeDuck(duck: DuckState, index: number, now: number)
 	}
 end
 
+-- Replicates incubator slots with a computed countdown so the client never derives timing.
+-- finishUtc is os.time-based (wall clock), so remaining time uses os.time, not os.clock.
+local function serializeIncubatorSlots(state: PlayerState)
+	local nowUtc = os.time()
+	local slots = {}
+
+	for slotIndex, slot in state.incubatorSlots do
+		local displayName = slot.eggType
+
+		for _, eggDef in PrototypeConfig.eggTypes do
+			if eggDef.id == slot.eggType then
+				displayName = eggDef.displayName
+				break
+			end
+		end
+
+		local secondsRemaining = math.max(0, slot.finishUtc - nowUtc)
+
+		table.insert(slots, {
+			slotIndex = slotIndex,
+			eggType = slot.eggType,
+			displayName = displayName,
+			secondsRemaining = secondsRemaining,
+			ready = secondsRemaining <= 0,
+		})
+	end
+
+	return slots
+end
+
 local function serializeState(state: PlayerState)
 	local now = os.clock()
 	local duckCount = getDuckCount(state)
@@ -1467,6 +1552,8 @@ local function serializeState(state: PlayerState)
 		starterChoiceCompleted = state.starterChoiceCompleted,
 		mysteryDuckBoxes = state.mysteryDuckBoxes,
 		pendingDuckBoxCandidates = state.pendingDuckBoxCandidates,
+		eggInventory = state.eggInventory,
+		incubatorSlots = serializeIncubatorSlots(state),
 	}
 end
 
@@ -2424,11 +2511,17 @@ local function pickMysteryBoxRarity(): string
 	return "uncommon"
 end
 
+-- Maps a rolled rarity to a concrete family. The Mystery Duck Box only ever rolls uncommon
+-- through epic; the common and legendary branches exist for Phase 6 egg hatching.
 local function pickFamilyForRarity(rarity: string): string
-	if rarity == "epic" then
+	if rarity == "legendary" then
+		return "golden"
+	elseif rarity == "epic" then
 		return "twilight_blue"
 	elseif rarity == "rare" then
 		return "blossom_pink"
+	elseif rarity == "common" then
+		return if math.random(1, 2) == 1 then "classic_yellow" else "mallard_green"
 	end
 
 	return if math.random(1, 2) == 1 then "choco_brown" else "snowy_white"
@@ -2550,6 +2643,192 @@ local function pickStarterChoice(player: Player, state: PlayerState, payload: an
 
 	state.starterChoiceCompleted = true
 	grantDuckWithFamily(state, familyId, rarity)
+end
+
+-- ── Phase 6: Hatching ─────────────────────────────────────────────────────────────────────
+local RARITY_RANK: {[string]: number} = {
+	common = 1,
+	uncommon = 2,
+	rare = 3,
+	epic = 4,
+	legendary = 5,
+}
+
+local function rarityAtLeast(rarity: string, floor: string): boolean
+	return (RARITY_RANK[rarity] or 0) >= (RARITY_RANK[floor] or 0)
+end
+
+local function getEggDefinition(eggType: string): {[string]: any}?
+	for _, eggDef in PrototypeConfig.eggTypes do
+		if eggDef.id == eggType then
+			return eggDef
+		end
+	end
+
+	return nil
+end
+
+-- Weighted roll over the egg's odds table, iterated in fixed rarity-rank order so the result
+-- is deterministic given the random draw. Odds for an egg must sum to 100.
+local function rollEggRarity(eggDef: {[string]: any}): string
+	local roll = math.random(1, 100)
+	local cumulative = 0
+	local lastDefined = "common"
+
+	for _, rarity in { "common", "uncommon", "rare", "epic", "legendary" } do
+		local chance = eggDef.odds[rarity]
+
+		if typeof(chance) == "number" and chance > 0 then
+			lastDefined = rarity
+			cumulative += chance
+
+			if roll <= cumulative then
+				return rarity
+			end
+		end
+	end
+
+	-- Rounding slack: if the draw exceeds the summed odds, award the highest defined tier.
+	return lastDefined
+end
+
+-- Resolves the hatch rarity including pity: a pity egg that has gone pityThreshold hatches
+-- without reaching pityFloor is forced to the floor. The counter resets whenever a hatch meets
+-- the floor (rolled or forced). Mutates state.hatchPity for the egg type.
+local function resolveHatchRarity(state: PlayerState, eggDef: {[string]: any}): string
+	local rarity = rollEggRarity(eggDef)
+
+	if eggDef.pityThreshold == nil or eggDef.pityFloor == nil then
+		return rarity
+	end
+
+	local pityKey = eggDef.id
+
+	if rarityAtLeast(rarity, eggDef.pityFloor) then
+		state.hatchPity[pityKey] = 0
+		return rarity
+	end
+
+	local nextPity = (state.hatchPity[pityKey] or 0) + 1
+
+	if nextPity >= eggDef.pityThreshold then
+		state.hatchPity[pityKey] = 0
+		return eggDef.pityFloor
+	end
+
+	state.hatchPity[pityKey] = nextPity
+	return rarity
+end
+
+local function buyEgg(state: PlayerState, payload: any)
+	if typeof(payload) ~= "table" then
+		return
+	end
+
+	local eggType = (payload :: {[string]: any}).eggType
+
+	if typeof(eggType) ~= "string" then
+		return
+	end
+
+	local eggDef = getEggDefinition(eggType)
+
+	if not eggDef or eggDef.buyCost <= 0 or state.coins < eggDef.buyCost then
+		return
+	end
+
+	state.coins -= eggDef.buyCost
+	queueEconomyEvent(state, "sink", eggDef.buyCost, "Shop", "egg_" .. eggDef.id)
+	state.eggInventory[eggDef.id] = (state.eggInventory[eggDef.id] or 0) + 1
+	markSaveDirty(state)
+end
+
+local function startIncubation(state: PlayerState, payload: any)
+	if typeof(payload) ~= "table" then
+		return
+	end
+
+	local eggType = (payload :: {[string]: any}).eggType
+
+	if typeof(eggType) ~= "string" then
+		return
+	end
+
+	local eggDef = getEggDefinition(eggType)
+
+	if not eggDef then
+		return
+	end
+
+	if (state.eggInventory[eggDef.id] or 0) <= 0 then
+		return
+	end
+
+	if #state.incubatorSlots >= PrototypeConfig.incubator.slotCount then
+		return
+	end
+
+	state.eggInventory[eggDef.id] -= 1
+	table.insert(state.incubatorSlots, {
+		eggType = eggDef.id,
+		finishUtc = os.time() + eggDef.hatchSeconds,
+	})
+	markSaveDirty(state)
+end
+
+local function collectHatch(player: Player, state: PlayerState, payload: any)
+	if typeof(payload) ~= "table" then
+		return
+	end
+
+	local slotIndex = (payload :: {[string]: any}).slotIndex
+
+	if typeof(slotIndex) ~= "number" or slotIndex % 1 ~= 0 then
+		return
+	end
+
+	local slot = state.incubatorSlots[slotIndex]
+
+	if not slot then
+		return
+	end
+
+	if os.time() < slot.finishUtc then
+		return
+	end
+
+	local eggDef = getEggDefinition(slot.eggType)
+
+	if not eggDef then
+		-- Unknown egg type (e.g. removed from config): drop the slot rather than stranding it.
+		table.remove(state.incubatorSlots, slotIndex)
+		markSaveDirty(state)
+		return
+	end
+
+	local rarity = resolveHatchRarity(state, eggDef)
+	local familyId = pickFamilyForRarity(rarity)
+	local displayName = familyId
+
+	for _, familyDef in PrototypeConfig.families do
+		if familyDef.id == familyId then
+			displayName = familyDef.displayName
+			break
+		end
+	end
+
+	table.remove(state.incubatorSlots, slotIndex)
+	grantDuckWithFamily(state, familyId, rarity)
+	markFunnelMilestone(state, "funnel_first_hatch")
+	markSaveDirty(state)
+
+	queueNotice(state, {
+		kind = RemoteProtocol.notices.eggHatched,
+		eggType = eggDef.id,
+		family = familyId,
+		rarity = rarity,
+		displayName = displayName,
+	})
 end
 
 local function claimDailyCheckIn(player: Player, state: PlayerState)
@@ -2786,6 +3065,12 @@ local function onAction(player: Player, actionName: any, payload: any?)
 		pickStarterChoice(player, state, payload)
 	elseif actionName == RemoteProtocol.actions.claimCollectionReward then
 		checkCollectionMilestones(state)
+	elseif actionName == RemoteProtocol.actions.buyEgg then
+		buyEgg(state, payload)
+	elseif actionName == RemoteProtocol.actions.startIncubation then
+		startIncubation(state, payload)
+	elseif actionName == RemoteProtocol.actions.collectHatch then
+		collectHatch(player, state, payload)
 	end
 
 	sendState(player, state)

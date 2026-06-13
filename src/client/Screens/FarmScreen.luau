@@ -3766,6 +3766,8 @@ local function createDefaultFarmState()
 		starterChoiceCompleted = false,
 		mysteryDuckBoxes = 0,
 		pendingDuckBoxCandidates = nil,
+		eggInventory = {},
+		incubatorSlots = {},
 	}
 end
 

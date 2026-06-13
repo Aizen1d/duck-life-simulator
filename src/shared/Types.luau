@@ -103,6 +103,16 @@ export type FarmState = {
 	starterChoiceCompleted: boolean,
 	mysteryDuckBoxes: number,
 	pendingDuckBoxCandidates: {DuckBoxCandidate}?,
+	eggInventory: {[string]: number},
+	incubatorSlots: {IncubatorSlotView},
+}
+
+export type IncubatorSlotView = {
+	slotIndex: number,
+	eggType: string,
+	displayName: string,
+	secondsRemaining: number,
+	ready: boolean,
 }
 
 export type DuckBoxCandidate = {

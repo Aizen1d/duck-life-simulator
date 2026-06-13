@@ -348,6 +348,9 @@ General rules for every bump: timestamps are server-derived (`os.time`) and neve
 - [x] Persist the Daily Streak V1 `streakDay` position with escalating rewards and the pause-not-reset rule in schema version `8`.
 - [x] Persist Daily Quests V0 day stamp, slot progress, and bonus flag in schema version `9`, with the day's quest selection derived from the UTC day number instead of saved.
 - [x] Persist the Feature Unlock Ladder `unlockLadder` flag in schema version `10`, with all unlock rungs derived from quest progress and duck count instead of saved.
+- [x] Persist Phase 5 per-duck `family`/`rarity`, `collectionRewardsClaimed`, `starterChoiceCompleted`, and `mysteryDuckBoxes` in schema version `11`, with pre-Phase-5 ducks migrating as `classic_yellow`/`common`.
+- [x] Persist the Analytics V0 `funnelMilestones` first-moment dedup set in schema version `12`.
+- [x] Persist Phase 6 `eggInventory`, `incubatorSlots` (server-derived `finishUtc`, validated on load), and `hatchPity` counters in schema version `13`, with the hatch rarity rolled server-side at collect time.
 
 ## Approved V0 Decisions
 

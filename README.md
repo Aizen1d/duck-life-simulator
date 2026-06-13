@@ -53,6 +53,7 @@ wally install
 - [Project map dashboard](docs/project-map/index.html)
 - [Gameplay simulator](docs/project-map/gameplay-flow.html)
 - [Development workflow](docs/WORKFLOW.md)
+- [Roblox Studio MCP and testing](docs/STUDIO_MCP.md)
 - [Documentation update policy](docs/DOC_UPDATE_POLICY.md)
 - [Reference policy](docs/REFERENCE_POLICY.md)
 - [Save data design](docs/SAVE_DATA_DESIGN.md)

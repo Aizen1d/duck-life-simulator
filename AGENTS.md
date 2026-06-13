@@ -32,7 +32,7 @@ The confirmed direction is a 2D UI duck farming simulator. Do not add extra game
 5. Check official Roblox docs when Roblox API, service behavior, limits, security, or platform rules are uncertain.
 6. Run the documentation impact check in `docs/DOC_UPDATE_POLICY.md` and update docs when needed.
 7. Follow `docs/LIBRARY_POLICY.md` before recommending or adding libraries.
-8. Verify links, commands, or builds when relevant.
+8. Verify links, commands, or builds when relevant. When the `Roblox_Studio` MCP is connected, verify game behavior by exercising the live code through it (see `docs/STUDIO_MCP.md`), not by static reasoning alone.
 9. Summarize what changed, which docs were updated, which sources were checked, and anything not verified.
 
 ## Niche Agent Mode Selection
@@ -72,6 +72,12 @@ rojo serve
 Use `rojo serve` when syncing file changes into Roblox Studio through the Rojo Studio plugin. Use `rojo build` when creating a local place file from the repository.
 
 Do not edit generated `.rbxlx` files by hand. The project ignores `Duck.rbxlx` and Studio lock files.
+
+## Roblox Studio MCP
+
+When the `Roblox_Studio` MCP server is connected (check with `claude mcp list`), it can execute Luau inside a live Studio instance, start/stop Play mode, read the Output log, and inspect the running game. Use it to verify game behavior during testing — server logic, DataStore persistence, and action handling can be checked against the real running code rather than by static reasoning. On-screen visuals (toasts, panels, layout) and multiplayer flows still need a human in Play mode.
+
+The full tool inventory, the testing rule, the safe save-backup/restore procedure, and the verified-logic-vs-visuals split are in `docs/STUDIO_MCP.md`. If the MCP is not connected, fall back to `rojo build` plus code review and clearly mark game behavior as unverified.
 
 ## Luau Boundaries
 

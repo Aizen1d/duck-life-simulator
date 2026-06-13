@@ -30,6 +30,7 @@ If any answer is yes, update the relevant docs in the same change.
 - `docs/PROJECT_STRUCTURE.md`: Rojo mappings, folder layout, new services, new top-level modules, or generated/local file rules.
 - `docs/project-map/script.js`: the interactive project map's node data when Rojo mappings, source modules, remotes, save schema version, or module relationships change. Keep its snapshot stats (module count, remote count, schema version) matching the real code.
 - `docs/WORKFLOW.md`: setup steps, build commands, Studio sync steps, testing process, or release flow.
+- `docs/STUDIO_MCP.md`: the Roblox Studio MCP tool inventory, the live-testing rule, and the save backup/restore procedure; update if the available MCP tools, servers, or testing approach change.
 - `docs/CODING_STANDARDS.md`: architecture rules, security rules, client/server boundaries, naming, dependencies, or testing expectations.
 - `docs/REFERENCE_POLICY.md`: official source rules for Roblox, Rojo, Aftman, and API verification behavior.
 - `docs/LIBRARY_POLICY.md`: dependency selection, source checks, approval rules, and package workflow decisions.

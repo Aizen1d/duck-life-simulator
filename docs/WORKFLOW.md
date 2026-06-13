@@ -113,6 +113,12 @@ When changing persistence:
 - Keep Studio-only tester paths guarded by `RunService:IsStudio()`.
 - Test first join, rejoin, held eggs, ready nest eggs, coins, Duck Feed, Premium Feed, Treat, Pillow, and Toy inventory, Egg Value level, duck names/profiles, duck level/XP, Quest V0/V1/V2 level/progress, `lastDailyClaimDay`, player leave save, autosave about `3` seconds after a change, shutdown save, malformed loaded data, and DataStore request failures. The farm screen should not show a save status indicator. A load failure must not write a default save over existing data; use Studio Output logs and rejoin checks to verify save behavior.
 
+## Roblox Studio MCP (live testing)
+
+When the `Roblox_Studio` MCP server is connected (`claude mcp list`), agents can execute Luau in a live Studio instance, enter/exit Play mode, read the Output log, and inspect the running game. Use it to verify game behavior — the manual checks below can be driven and confirmed against the real code instead of by reasoning alone.
+
+See [Roblox Studio MCP — Tools and Testing Workflow](STUDIO_MCP.md) for the tool inventory, the testing rule, the safe save backup/restore procedure, and what still needs a human in Play mode (on-screen visuals, multiplayer). If the MCP is not connected, fall back to `rojo build` plus code review and mark game behavior as unverified.
+
 ## Current Prototype Studio Test
 
 After syncing or building the current prototype, use Roblox Studio Play mode to check:
